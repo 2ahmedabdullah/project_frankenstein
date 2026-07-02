@@ -181,12 +181,28 @@ pip install torch transformers accelerate datasets
 This script loads a pre-trained model, freezes the Attention mechanics, and surgically replaces the target FFN matrices (gate_proj, up_proj, down_proj) with custom BitLinear layers initializing ternary states.
 
 
-                        [ Original Q4_K_M Model ]
-                                    │
-                                    ▼
-                            ┌───────────────┐
-                            │  surgery.py   │  ◄── Converts FFN layers to Ternary Space (-1, 0, 1)
-                            └───────┬───────┘
+                       [ Original Q4_K_M Model ]
+                                   │
+                                   ▼
+                 [ GGUFReader loops through Tensors ]
+                                   │
+                 ┌─────────────────┴─────────────────┐
+                 │ (Is it an Attention Tensor?)      │(Is it an FFN Tensor?)
+                 ▼                                   ▼ 
+         ┌───────────────┐                   ┌───────────────────────────┐
+         │ Pass Through  │                   │ ternary_158_quantize()    │
+         │  Unchanged    │                   ├───────────────────────────┤
+         └───────┬───────┘                   │ 1. Compute Threshold      │
+                 │                           │ 2. Clamp to -1, 0, 1      │
+                 │                           │ 3. Calculate Scale Factor │
+                 │                           └─────────────┬─────────────┘
+                 │                                         │
+                 ▼                                         ▼
+         ┌───────────────────────────────────────────────────────────────┐
+         │                 perform_model_surgery()                       │
+         │  Assembles & Writes Final Custom GGUF File to Disk            │
+         └───────────────────────────────────────────────────────────────┘
+                                    │     
                                     ▼
                           [ Frankenstein GGUF ] (Mutant GGUF file)
                                     │
@@ -196,11 +212,19 @@ This script loads a pre-trained model, freezes the Attention mechanics, and surg
                             │    Engine     │  ◄── Routes FFN  -> System RAM (CPU)
                             └───────┬───────┘
                                     │
-                 ┌──────────────────┴──────────────────┐
-                 ▼                                     ▼
-        [ Attention Blocks ]                    [ FFN Blocks ]
-         Routed to GPU VRAM                  Routed to System RAM
-     (Heavy floating-point math)          (Pure Addition/Subtraction)
+                  ┌─────────────────┴─────────────────┐
+                  ▼ (If name contains "attn")         ▼ (If name contains "mlp"/"ffn")
+        ┌──────────────────────┐         ┌───────────────────────────┐
+        │  GGML_BACKEND_GPU    │         │     GGML_BACKEND_CPU      │
+        ├──────────────────────┤         ├───────────────────────────┤
+        │ Routes to 6GB VRAM   │         │ Routes to 24GB System RAM │
+        │ Smooth FP16/Q4 Math  │         │ Pure Addition/Subtraction │
+        └──────────┬───────────┘         └─────────────┬─────────────┘
+                   │                                   │
+                   └────────────────┬──────────────────┘
+                                    ▼
+                    [ Active Inference Token Loop ]
+        
 
 
 ### The "Cell-Level Transformer"
@@ -212,16 +236,43 @@ It checks if the incoming tensor is readable as floating-point math (np.float32)
 
 Step 2: Finding the Dynamic Threshold Line ($\Delta$)
 
-It reads every single number in the matrix and calculates the absolute mean. Following your README formula, it establishes a gate boundary:
+Most weights in a neural network layer follow a Gaussian (Normal) Distribution—meaning a huge cluster of weights sit very close to zero, while fewer, more powerful weights stretch out to the positive and negative sides.
 
 $$\Delta = 0.7 \times \text{Mean}(|W|)$$
 
-Step 3: Squeezing to Three States (The 1.58-bit Limit)
+When multiplied the absolute mean by 0.7, one draws two sharp lines right in the middle of that bell curve:
 
-It wipes out all the infinite floating-point values and strictly overwrites them:
-    If a weight value is higher than $+\Delta$, it becomes 1.0.
-    If a weight value is lower than $-\Delta$, it becomes -1.0.
-    If a weight value is near the middle, it gets completely neutralized and becomes 0.0.
+The Dead Zone (Set to 0): Any weight that falls inside the $-\Delta$ to $+\Delta$ window is deemed "background noise." The script aggressively zeroes them out. This accounts for roughly 30% to 40% of the matrix, creating sparsity which makes CPU memory streaming incredibly efficient.
+
+The Positive Charge (Set to +1): Any weight resting safely above $+\Delta$ is a strong positive signal.
+
+The Negative Charge (Set to -1): Any weight resting safely below $-\Delta$ is a strong negative inhibitor.
+
+
+Standard Weight Distribution Curve
+             
+                                 ▲
+                                ╱█╲
+                               ╱███╲  ◄── High density of weights near 0
+                              ╱█████╲
+                            _╱███████╲_
+        -1 Zone            ╱███████████╲           +1 Zone
+     ◄────────────│███████│      0      │███████├─────────────►
+                  │  -Δ   │The Dead Zone│  +Δ   │ 
+     (Strong Neg) │       │◄───────────►│       │ (Strong Pos)
+                  ▼       ▼             ▼       ▼
+                          (Squeezed to 0)        
+                        
+⚖️ Why exactly 0.7? 
+
+The number 0.7 was found through structural optimization to minimize Quantization Noise (the loss of intelligence when one crush numbers).
+
+If the number was too low (e.g., 0.1): Almost no weights would become 0. The script would force almost everything to $+1$ or $-1$. one lose the ability to have "neutral" weights, completely breaking the model's factual retention.
+
+If the number was too high (e.g., 1.5): The threshold would be too wide. The script would wipe out 80% of the weights to 0. One destroy too much information, and the model goes braindead (outputs total gibberish that even fine-tuning cannot heal).
+
+By using 0.7, onemathematically guarantee that the structural variance of the newly squeezed 1.58-bit ternary matrix matches the variance of the original high-precision matrix as closely as possible, allowing the laptop CPU to process a highly optimized, clean database.
+            
 
 Step 4: Keeping the Magnitude (scale)
 
