@@ -50,6 +50,57 @@ This project introduces **Vertical Precision Splitting**, dividing the workload 
 
 ---
 
+
+## 🏥 Post-Op Model Surgery: 291 Tensor Architecture Breakdown
+
+The **Meta-Llama-3-8B-Instruct** GGUF model layout. 
+
+
+### 🧮 The Architectural Formula
+
+The model blueprint is composed of two primary sections: **Global Setup Layers** and a deep stack of identical, repeating **Decoder Layer Blocks**. 
+
+
+
+🧵 Part 1: The Attention Block (5 Tensors)
+This block is responsible for looking at a word and figuring out which other words in the sentence it relates to. To do this mathematically, it needs 5 distinct tensors:
+
+attn_norm.weight: An RMS (Root Mean Square) Normalization tensor. It cleans up, scales, and stabilizes the data entering the layer so the math doesn't spiral out of control.
+
+attn_q.weight (Query): Represents what the current word is "searching" for.
+
+attn_k.weight (Key): Represents what characteristics this word offers to other words.
+
+attn_v.weight (Value): Holds the actual semantic meaning of the word.
+
+attn_output.weight: After Q, K, and V interact, this tensor projects the combined result back into the model's main data highway.
+
+💡 Advanced Note: In standard Transformers, Q, K, and V usually have the exact same size. However, Llama 3 uses Grouped-Query Attention (GQA). It uses 32 heads for Queries but scales down to just 8 heads for Keys and Values. Even though the sizes are smaller to save memory, they still require their own individual tensors!
+
+📚 Part 2: The Feed-Forward Network / FFN (4 Tensors)
+Once the attention block figures out how the words relate to each other, it passes the data to the FFN. The FFN acts like a massive local encyclopedia lookup. It uses 4 tensors:
+
+ffn_norm.weight: Another normalization tensor that stabilizes the data right before it hits the heavy fact-checking math.
+
+ffn_gate.weight
+
+ffn_up.weight
+
+ffn_down.weight
+
+
+$$\text{Layer} = \text{Attention Block} + \text{FFNN Block}$$
+
+$$\text{5 Attention Tensors} + \text{4 FFN Tensors} = \mathbf{9\text{ Tensors per Layer}}$$
+
+
+The total tensor count matches the mathematical blueprint precisely:
+
+$$\text{Total Tensors} = \text{Global Tensors} + (\text{Number of Layers} \times \text{Tensors per Layer})$$
+
+$$\text{Total Tensors} = 3 + (32 \times 9) = \mathbf{291}$$
+
+
 ## ⚡ Quick Start: Execution Pipeline
 
 ### Step 1: Prerequisites & Environment Setup
@@ -131,21 +182,6 @@ Device 1 (CPU): Maps the large ternary FFN weights as unmultiplied tensor arrays
 The Loop: During generation execution steps, layers process attention workflows via CUDA, ping tokens over the PCIe lanes to system RAM for integer addition processing inside the ternary FFN layers, and pull the activation tensor blocks back to the GPU to complete the loop cycle.
 
 
-## 🏥 Post-Op Model Surgery: 291 Tensor Architecture Breakdown
-
-This document provides a comprehensive structural audit of the **Meta-Llama-3-8B-Instruct** GGUF model layout. By unpacking its binary topology, we can map out exactly why and how the tensor components are distributed across computing hardware (GPU VRAM vs. System RAM) to maintain an optimal memory cushion.
-
----
-
-### 🧮 The Architectural Formula
-
-The model blueprint is composed of two primary sections: **Global Setup Layers** and a deep stack of identical, repeating **Decoder Layer Blocks**. 
-
-The total tensor count matches the mathematical blueprint precisely:
-
-$$\text{Total Tensors} = \text{Global Tensors} + (\text{Number of Layers} \times \text{Tensors per Layer})$$
-
-$$\text{Total Tensors} = 3 + (32 \times 9) = \mathbf{291}$$
 
 ---
 
