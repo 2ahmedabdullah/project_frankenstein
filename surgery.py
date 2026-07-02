@@ -5,36 +5,39 @@ import sys
 import numpy as np
 from gguf import GGUFReader, GGUFWriter
 
-def ternary_158_quantize(tensor_data):
+def ternary_158_quantize(tensor):
     """
     Surgically compresses a weight tensor into a 1.58-bit ternary format {-1, 0, 1}.
-    Uses a dynamic threshold scale based on the absolute mean of the weight weights.
     """
-    # Convert raw tensor bytes to float32 for processing if needed
-    # Note: In a production setup, use ggml dequantize routines if the source is Q4_K
-    weights = np.frombuffer(tensor_data, dtype=np.float32).copy()
-    
-    if weights.size == 0:
-        return tensor_data, 1.0
+    # Safeguard: Convert data cleanly depending on source quantization layout
+    if tensor.data.dtype == np.float32:
+        weights = tensor.data.copy()
+    else:
+        # Fallback handling for packed formats: view as float32 if data matches
+        try:
+            weights = np.frombuffer(tensor.data, dtype=np.float32).copy()
+        except Exception:
+            # If data array is non-standard bytes, cast to float32 array
+            weights = tensor.data.astype(np.float32)
 
-    # Calculate the ternary scale constant: delta = 0.7 * Mean(|W|)
+    if weights.size == 0:
+        return weights, 1.0
+
+    # Calculate Project README Formula: Delta = 0.7 * Mean(|W|)
     abs_mean = np.mean(np.abs(weights))
     threshold = 0.7 * abs_mean
     
-    # Calculate global scale factor factor
-    scale = np.max(np.abs(weights)) / 1.0 if np.max(np.abs(weights)) > 0 else 1.0
+    scale = np.max(np.abs(weights)) if np.max(np.abs(weights)) > 0 else 1.0
     
     # Apply ternary mapping
-    ternary_weights = np.zeros_like(weights)
+    ternary_weights = np.zeros_like(weights, dtype=np.float32)
     ternary_weights[weights > threshold] = 1.0
     ternary_weights[weights < -threshold] = -1.0
     
-    # Pack the mutated ternary floats back into raw bytes 
-    # (Or pack into a 2-bit custom bitstream lookup format for CPU execution)
-    return ternary_weights.tobytes(), scale
+    return ternary_weights, scale
 
 def perform_model_surgery(src_path, dest_path):
-    print("✂️ Starting Model Surgery Phase...")
+    print("🏥 Starting Model Surgery Phase...")
     print(f"📖 Reading original blueprint: {src_path}")
     
     reader = GGUFReader(src_path)
@@ -46,7 +49,7 @@ def perform_model_surgery(src_path, dest_path):
         writer.add_key_value(field.name, field.data, field.type)
 
     # Add custom surgical metadata tracking keys
-    writer.add_key_value("surgery.split_execution", True, type=3) # Boolean flag
+    writer.add_key_value("surgery.split_execution", True, type=3) # Type 3 = Boolean
     writer.add_key_value("surgery.ffn_format", "ternary_1.58b", type=3)
 
     # 2. Iterate through weights and apply the split-brain routing
@@ -56,38 +59,24 @@ def perform_model_surgery(src_path, dest_path):
     for tensor in reader.tensors:
         name = tensor.name
         shape = tensor.shape
-        tensor_type = tensor.tensor_type
-        raw_data = tensor.data
         
-        if "attn" in name:
-            # --- GPU High-Precision Attention Track ---
-            print(f"💎 [PRESERVING HIGH PRECISION] -> {name} (VRAM)")
-            writer.add_tensor_info(name, shape, tensor_type, raw_data.size)
-            # Append intact tensor bytes directly to the writer payload
-            writer.tensors_data.append(raw_data)
-            
-        elif "ffn" in name or "mlp" in name:
-            # --- CPU Ternary 1.58-Bit Grafting Track ---
+        if "ffn" in name or "mlp" in name:
             print(f"🪓 [GRAFTING TERNARY 1.58-BIT]  -> {name} (System RAM)")
             
-            # Perform runtime weight conversion to ternary space
-            ternary_bytes, scale = ternary_158_quantize(raw_data)
+            # Compute ternary weights and scale vector
+            ternary_array, scale = ternary_158_quantize(tensor)
             
-            # Save the mutated low-bitweights
-            writer.add_tensor_info(name, shape, tensor_type, len(ternary_bytes))
-            writer.tensors_data.append(ternary_bytes)
+            # Add mutated tensor cleanly using native array structures
+            writer.add_tensor(name, ternary_array, raw_shape=shape)
             
-            # Store the corresponding floating-point scale factor vector for lookup alignment
+            # Weld the tracking scale tensor right next to it
             scale_name = f"{name}.scale"
-            scale_data = np.array([scale], dtype=np.float32).tobytes()
-            writer.add_tensor_info(scale_name, [1], 0, len(scale_data)) # 0 = GGML_TYPE_F32
-            writer.tensors_data.append(scale_data)
+            writer.add_tensor(scale_name, np.array([scale], dtype=np.float32))
             
         else:
-            # --- Base Embedding and Output Infrastructure ---
-            print(f"📦 [ROUTING GLOBAL HEADER]     -> {name}")
-            writer.add_tensor_info(name, shape, tensor_type, raw_data.size)
-            writer.tensors_data.append(raw_data)
+            # Pass attention blocks and embedding arrays straight through
+            print(f"💎 [PRESERVING TRACK]           -> {name}")
+            writer.add_tensor(name, tensor.data, raw_shape=shape)
 
     print("-" * 70)
     print("💾 Committing surgical changes to final file payload...")
@@ -96,7 +85,7 @@ def perform_model_surgery(src_path, dest_path):
     writer.write_tensors_to_file()
     writer.close()
     
-    print(f"\n🎉 Surgery Complete! New Hybrid Architecture Compiled at: {dest_path}")
+    print(f"\n🎉 Surgery Complete! Mutant Architecture Saved at: {dest_path}")
 
 if __name__ == "__main__":
     SRC_MODEL = "./models/Meta-Llama-3-8B-Instruct-Q4_K_M.gguf"

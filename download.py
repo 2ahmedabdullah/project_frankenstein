@@ -17,7 +17,7 @@ if HF_ACCESS_TOKEN is not None:
     os.environ["HF_TOKEN"] = HF_ACCESS_TOKEN
     print("🔑 Hugging Face token loaded successfully from environment configuration.")
 else:
-    print("⚠️ WARNING: No 'HF_TOKEN' detected in your .env file. Attempting public unauthenticated download...")
+    print("⚠️ WARNING: No 'HF_TOKEN' detected in the .env file. Attempting public unauthenticated download...")
 
 os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
 

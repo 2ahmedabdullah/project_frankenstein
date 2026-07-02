@@ -181,20 +181,51 @@ pip install torch transformers accelerate datasets
 This script loads a pre-trained model, freezes the Attention mechanics, and surgically replaces the target FFN matrices (gate_proj, up_proj, down_proj) with custom BitLinear layers initializing ternary states.
 
 
-        [ Original Q4_K_M Model ]
-                    │
-                    ▼
-            ┌───────────────┐
-            │  surgery.py   │  ◄── Converts FFN layers to Ternary Space (-1, 0, 1)
-            └───────┬───────┘
-                    ▼
-            [ Frankenstein GGUF ] ──► Loaded into the Custom C++ Inference Engine
-                                            │
-                         ┌──────────────────┴──────────────────┐
-                         ▼                                     ▼
-                [ Attention Blocks ]                    [ FFN Blocks ]
-                Routed to GPU VRAM                  Routed to System RAM
-            (Heavy floating-point math)         (Pure Addition/Subtraction)
+                        [ Original Q4_K_M Model ]
+                                    │
+                                    ▼
+                            ┌───────────────┐
+                            │  surgery.py   │  ◄── Converts FFN layers to Ternary Space (-1, 0, 1)
+                            └───────┬───────┘
+                                    ▼
+                          [ Frankenstein GGUF ] (Mutant GGUF file)
+                                    │
+                                    ▼
+                            ┌───────────────┐
+                            │ C++ Execution │  ◄── Routes Attn -> GPU VRAM
+                            │    Engine     │  ◄── Routes FFN  -> System RAM (CPU)
+                            └───────┬───────┘
+                                    │
+                 ┌──────────────────┴──────────────────┐
+                 ▼                                     ▼
+        [ Attention Blocks ]                    [ FFN Blocks ]
+         Routed to GPU VRAM                  Routed to System RAM
+     (Heavy floating-point math)          (Pure Addition/Subtraction)
+
+
+### The "Cell-Level Transformer"
+This function handles the raw math. Its single goal is to take a high-precision layer matrix and crush it into a ternary state ($-1$, $0$, or $+1$).
+
+Step 1: Raw Data Extraction 
+
+It checks if the incoming tensor is readable as floating-point math (np.float32). If it is still compressed or in bytes, it converts it to clean, raw floats so it can perform calculations.
+
+Step 2: Finding the Dynamic Threshold Line ($\Delta$)
+
+It reads every single number in the matrix and calculates the absolute mean. Following your README formula, it establishes a gate boundary:
+
+$$\Delta = 0.7 \times \text{Mean}(|W|)$$
+
+Step 3: Squeezing to Three States (The 1.58-bit Limit)
+
+It wipes out all the infinite floating-point values and strictly overwrites them:
+    If a weight value is higher than $+\Delta$, it becomes 1.0.
+    If a weight value is lower than $-\Delta$, it becomes -1.0.
+    If a weight value is near the middle, it gets completely neutralized and becomes 0.0.
+
+Step 4: Keeping the Magnitude (scale)
+
+Because turning numbers into raw $-1$, $0$, and $1$ destroys the scaling magnitude of the model's knowledge, it calculates a single scale float (the maximum absolute value of the original tensor). It returns both the newly flattened matrix and this scale multiplier.
 
 
 ```
@@ -239,9 +270,21 @@ Device 1 (CPU): Maps the large ternary FFN weights as unmultiplied tensor arrays
 
 The Loop: During generation execution steps, layers process attention workflows via CUDA, ping tokens over the PCIe lanes to system RAM for integer addition processing inside the ternary FFN layers, and pull the activation tensor blocks back to the GPU to complete the loop cycle.
 
+## Repo Structure
 
+project-frankenstein/
+│
+├── models/
+│   └── Meta-Llama-3-8B-Instruct-Q4_K_M.gguf         <--      [Raw model]
+│   └── Meta-Llama-3-8B-Surgically-Split-1.58b.gguf  <--  🧬  [THE MUTANT]
+│ 
+├── inspection.py                                  
+├── surgery.py                                     
+│
+└── inference/
+    ├── Makefile                                   
+    └── hybrid_runner.cpp                            <-- (C++ engine)
 
----
 
 ## ⚠️ Known Implementation Limits
 The PCIe Bottleneck: Due to structural constraints on standard consumer motherboards, routing step data back and forth between VRAM and system memory introduces data traffic stalls. Average generation ranges between 5 to 12 tokens per second over typical PCIe 4.0 slots.
