@@ -106,6 +106,8 @@ for (auto & tensor : model.tensors) {
 ### 🏥 Step 3: Post-Op Healing (Distillation / Fine-Tuning)
 Directly after surgery, the model will output gibberish due to a language mismatch between the smooth floating-point attention layers and the blocky ternary FFN layers.
 
+
+
 To bridge this gap, run the training pipeline with Quantization-Aware Fine-Tuning (QAFT). We pass an open-source instructional dataset through the model for 3–5 epochs, keeping the attention weights strictly locked. This forces the new 1.58-bit FFN parameters to adapt to their new host ecosystem.
 
 
@@ -127,6 +129,37 @@ Device 0 (CUDA): Allocates the static KV Cache arrays, input context embedding t
 Device 1 (CPU): Maps the large ternary FFN weights as unmultiplied tensor arrays within system memory.
 
 The Loop: During generation execution steps, layers process attention workflows via CUDA, ping tokens over the PCIe lanes to system RAM for integer addition processing inside the ternary FFN layers, and pull the activation tensor blocks back to the GPU to complete the loop cycle.
+
+
+## 🏥 Post-Op Model Surgery: 291 Tensor Architecture Breakdown
+
+This document provides a comprehensive structural audit of the **Meta-Llama-3-8B-Instruct** GGUF model layout. By unpacking its binary topology, we can map out exactly why and how the tensor components are distributed across computing hardware (GPU VRAM vs. System RAM) to maintain an optimal memory cushion.
+
+---
+
+### 🧮 The Architectural Formula
+
+The model blueprint is composed of two primary sections: **Global Setup Layers** and a deep stack of identical, repeating **Decoder Layer Blocks**. 
+
+The total tensor count matches the mathematical blueprint precisely:
+
+$$\text{Total Tensors} = \text{Global Tensors} + (\text{Number of Layers} \times \text{Tensors per Layer})$$
+
+$$\text{Total Tensors} = 3 + (32 \times 9) = \mathbf{291}$$
+
+---
+
+## 🪓 Step-by-Step Layer Anatomy
+
+### 1. Global Components (3 Tensors)
+These elements manage global input-output translations and token stabilization across the entire execution loop.
+*   `token_embd.weight`: Maps input text tokens into high-dimensional mathematical vectors.
+*   `output_norm.weight`: A final RMSNorm layer that stabilizes numeric values at the exit point.
+*   `output.weight`: Predicts and decodes raw mathematics back into text tokens.
+
+### 2. The 32 Repeating Decoder Layers (9 Tensors per Layer)
+Each individual block (`blk.0` through `blk.31`) is split into a **Pre-LN Attention Block** and a **Pre-LN SwiGLU Feed-Forward Block**:
+
 
 ## ⚠️ Known Implementation Limits
 The PCIe Bottleneck: Due to structural constraints on standard consumer motherboards, routing step data back and forth between VRAM and system memory introduces data traffic stalls. Average generation ranges between 5 to 12 tokens per second over typical PCIe 4.0 slots.
