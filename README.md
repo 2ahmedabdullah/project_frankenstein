@@ -61,7 +61,7 @@ pip install torch transformers accelerate datasets
 This script loads a pre-trained model, freezes the Attention mechanics, and surgically replaces the target FFN matrices (gate_proj, up_proj, down_proj) with custom BitLinear layers initializing ternary states.
 
 ```
-// modify the graph builder (approx. 10-20 lines of code)
+// modify the graph builder
 for (auto & tensor : model.tensors) {
     if (tensor.name.contains("self_attn")) {
         // Force attention mechanisms onto your 6GB RTX GPU
