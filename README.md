@@ -60,6 +60,20 @@ pip install torch transformers accelerate datasets
 ### Step 2: Performing the Model Surgery (surgery.py)
 This script loads a pre-trained model, freezes the Attention mechanics, and surgically replaces the target FFN matrices (gate_proj, up_proj, down_proj) with custom BitLinear layers initializing ternary states.
 
+```
+// modify the graph builder (approx. 10-20 lines of code)
+for (auto & tensor : model.tensors) {
+    if (tensor.name.contains("self_attn")) {
+        // Force attention mechanisms onto your 6GB RTX GPU
+        tensor.backend = GGML_BACKEND_GPU; 
+    } 
+    else if (tensor.name.contains("mlp") || tensor.name.contains("ffn")) {
+        // Force the massive factual layers onto your 24GB System RAM
+        tensor.backend = GGML_BACKEND_CPU; 
+    }
+}
+```
+
 ### 🏥 Step 3: Post-Op Healing (Distillation / Fine-Tuning)
 Directly after surgery, the model will output gibberish due to a language mismatch between the smooth floating-point attention layers and the blocky ternary FFN layers.
 
