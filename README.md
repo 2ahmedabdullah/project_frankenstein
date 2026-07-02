@@ -6,7 +6,9 @@ This repository contains the tooling and research code required to perform archi
 
 ## 🏗️ Architecture Overview
 
-Standard local AI inference engines offload models *horizontally* (by entire layer blocks). This project introduces **Vertical Precision Splitting**, dividing the workload based on hardware-specific computing strengths:
+Standard local AI inference engines offload models *horizontally* (by entire layer blocks). 
+This project introduces **Vertical Precision Splitting**, dividing the workload based on hardware-specific computing strengths:
+
 
                         [ USER PROMPT ]
                                │
@@ -59,6 +61,33 @@ pip install torch transformers accelerate datasets
 
 ### Step 2: Performing the Model Surgery (surgery.py)
 This script loads a pre-trained model, freezes the Attention mechanics, and surgically replaces the target FFN matrices (gate_proj, up_proj, down_proj) with custom BitLinear layers initializing ternary states.
+
+
+
+
+            [ Input Data ] (Size: 4,096)
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+            1. ffn_up               2. ffn_gate
+            (Dense Layer)           (Dense Layer)
+            (Size: 14,336)          (Size: 14,336)
+                    │                       │
+                    │                       ▼
+                    │               [ Swish Activation ]
+                    │                       │
+                    └───────────┬───────────┘
+                                ▼
+                    [ Element-wise Multi ] (The Gate Filter)
+                                │
+                                ▼
+                            3. ffn_down
+                        (Dense Layer)
+                        (Size: 4,096)
+                                │
+                                ▼
+                        [ Next Layer ]
+
 
 ```
 // modify the graph builder
