@@ -75,24 +75,24 @@ This block is responsible for looking at a word and figuring out which other wor
 
 💡 Advanced Note: In standard Transformers, Q, K, and V usually have the exact same size. However, Llama 3 uses Grouped-Query Attention (GQA). It uses 32 heads for Queries but scales down to just 8 heads for Keys and Values. Even though the sizes are smaller to save memory, they still require their own individual tensors!
 
-### 📚 Part 2: The Feed-Forward Network / FFN (4 Tensors)
+### 📚 Part 2: The Feed-Forward Neural Network / FFNN (4 Tensors)
 
 Once the attention block figures out how the words relate to each other, it passes the data to the FFN. The FFN acts like a massive local encyclopedia lookup. It uses 4 tensors:
 
-1) ffn_norm.weight: Another normalization tensor that stabilizes the data right before it hits the heavy fact-checking math.
+1) ffnn_norm.weight: Another normalization tensor that stabilizes the data right before it hits the heavy fact-checking math.
 
-2) ffn_gate.weight
+2) ffnn_gate.weight
 
-3) ffn_up.weight
+3) ffnn_up.weight
 
-4) ffn_down.weight
+4) ffnn_down.weight
 
 
             [ Input Data ] (Size: 4,096)
                                 │
                     ┌───────────┴───────────┐
                     ▼                       ▼
-            1. ffn_up               2. ffn_gate
+            1. ffnn_up               2. ffnn_gate
             (Dense Layer)           (Dense Layer)
             (Size: 14,336)          (Size: 14,336)
                     │                       │
@@ -104,7 +104,7 @@ Once the attention block figures out how the words relate to each other, it pass
                     [ Element-wise Multi ] (The Gate Filter)
                                 │
                                 ▼
-                            3. ffn_down
+                            3. ffnn_down
                         (Dense Layer)
                         (Size: 4,096)
                                 │
@@ -115,7 +115,7 @@ Once the attention block figures out how the words relate to each other, it pass
 
 $$\text{Layer} = \text{Attention Block} + \text{FFNN Block}$$
 
-$$\text{5 Attention Tensors} + \text{4 FFN Tensors} = \mathbf{9\text{ Tensors per Layer}}$$
+$$\text{5 Attention Tensors} + \text{4 FFNN Tensors} = \mathbf{9\text{ Tensors per Layer}}$$
 
 $$\text{Total Tensors} = \text{Global Tensors} + (\text{Number of Layers} \times \text{Tensors per Layer})$$
 
