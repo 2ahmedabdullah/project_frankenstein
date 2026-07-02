@@ -275,9 +275,37 @@ If the number was too high (e.g., 1.5): The threshold would be too wide. The scr
 By using 0.7, it aims to preserve that the structural variance of the newly squeezed 1.58-bit ternary matrix matches the variance of the original high-precision matrix as closely as possible, allowing the laptop CPU to process a compact ternary representation.
             
 
-Step 4: Keeping the Magnitude (scale)
+### Mutation Results and Analysis
 
-Because turning numbers into raw $-1$, $0$, and $1$ removes the original weight magnitude information, it calculates a single scale float (the maximum absolute value of the original tensor). It returns both the ternary weight matrix and this scale multiplier.
+
+🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_down.weight (System RAM)
+🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_gate.weight (System RAM)
+🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_up.weight (System RAM)
+🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_norm.weight (System RAM)
+💎 [PRESERVING TRACK]           -> blk.27.attn_k.weight
+💎 [PRESERVING TRACK]           -> blk.27.attn_output.weight
+💎 [PRESERVING TRACK]           -> blk.27.attn_q.weight
+💎 [PRESERVING TRACK]           -> blk.27.attn_v.weight
+💎 [PRESERVING TRACK]           -> output_norm.weight
+----------------------------------------------------------------------
+💾 Committing surgical changes to final file payload...
+
+🎉 Surgery Complete! Mutant Architecture Saved at: ./models/Llama-3.2-3B-Instruct-Mutant.gguf
+
+
+
+### 📊 SIDE-BY-SIDE DISTRIBUTION PROFILE FOR: blk.0.ffn_gate.weight
+
+===================================================================================================================
+ORIGINAL MODEL (Continuous)                             | MUTANT MODEL (Ternary 1.58b)                           
+===================================================================================================================
+[0.00 to 51.00]     11.79% █████                        | Value:  -1.0        48.92% ████████████████████████    
+[51.00 to 102.00]   33.41% ████████████████             | Value:   0.0         2.05% █                           
+[102.00 to 153.00]  10.13% █████                        | Value:   1.0        49.03% ████████████████████████    
+[153.00 to 204.00]  35.98% █████████████████            |                                                        
+[204.00 to 255.00]   8.69% ████                         |                                                        
+===================================================================================================================
+
 
 
 ```

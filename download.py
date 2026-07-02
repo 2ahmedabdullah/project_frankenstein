@@ -11,6 +11,7 @@ load_dotenv()
 
 # Fetch the token from the environment configuration matrix
 HF_ACCESS_TOKEN = os.getenv("HF_TOKEN")
+print(HF_ACCESS_TOKEN)
 
 # --- High-Performance Network Configuration Matrix ---
 if HF_ACCESS_TOKEN is not None:
@@ -55,10 +56,11 @@ def secure_download(repo_id, filename=None):
 if __name__ == "__main__":
     # Define our exact target pair for the RTX 3050 matrix
     models_to_fetch = [
-        # --- TARGET: Meta Llama 3 8B Instruct Q4_K_M ---
+       # --- NEW TARGET: Meta Llama 3.2 3B Instruct F16 ---
+        # File Size: ~6.5 GB. Perfect for your 16GB RAM surgery & 6GB VRAM target execution!
         {
-            "repo": "bartowski/Meta-Llama-3-8B-Instruct-GGUF", 
-            "file": "Meta-Llama-3-8B-Instruct-Q4_K_M.gguf"
+            "repo": "unsloth/Llama-3.2-3B-Instruct-GGUF", 
+            "file": "Llama-3.2-3B-Instruct.F16.gguf"
         },
     ]
     
