@@ -1,8 +1,24 @@
 # 🧬 Project Frankenstein: Hybrid-Precision Model Surgery
 
-This repository contains the tooling and research code required to perform architectural "surgery" on standard Transformer models (e.g., Llama, Qwen). Instead of training an LLM from scratch, this project surgically splits a pre-trained model down the center of its transformer blocks—preserving high-precision Attention layers for execution in GPU VRAM while grafting ultra-low 1.58-bit ternary Feed-Forward Networks (FFNs) for execution in host system RAM via CPU lookup tables.
+This repository contains the tooling and research code required to perform architectural "surgery" on standard Transformer models (e.g., Llama, Qwen). Instead of training an LLM from scratch, this project surgically splits a pre-trained model down the center of its transformer blocks—preserving high-precision Attention layers for execution in GPU VRAM while grafting ultra-low 1.58-bit ternary Feed-Forward Networks (FFNNs) for execution in host system RAM via CPU lookup tables.
 
----
+
+## ⚙️ Target Hardware (The Constraints)
+
+This suite is deliberately designed to profile budget, edge, and consumer-grade hardware configurations:
+
+
+```toml
+[Hardware Profile]
+Device       = "RTX 3060 Laptop (6GB VRAM) / RTX 4050 (6GB VRAM)"
+Compute      = "Intel i7-12700H / Ryzen 7"
+System RAM   = "16GB / 32GB DDR4/DDR5"
+OS           = "Windows 11"
+
+2024 Lenovo LOQ 15IRX9 (Type 83DV) gaming laptop
+
+```
+
 
 ## 🏗️ Architecture Overview
 
@@ -46,7 +62,7 @@ This project introduces **Vertical Precision Splitting**, dividing the workload 
 | :--- | :--- | :--- | :--- | :--- |
 | **Embeddings & Head** | ~5% | FP16 / BF16 | GPU (VRAM) | ~0.5 GB |
 | **Self-Attention Blocks** | ~35% | FP16 or Q4_K | GPU (VRAM) | ~1.5 GB |
-| **Feed-Forward (FFN)** | ~60% | 1.58-bit Ternary | CPU (System RAM) | ~2.5 GB |
+| **Feed-Forward (FFNN)** | ~60% | 1.58-bit Ternary | CPU (System RAM) | ~2.5 GB |
 
 ---
 
@@ -137,7 +153,7 @@ $$\text{Total Tensors} = 3 + (32 \times 9) = \mathbf{291}$$
 ## ⚡ Quick Start: Execution Pipeline
 
 ### Step 1: Prerequisites & Environment Setup
-Ensure you have PyTorch installed with CUDA support, alongside the system's hardware configurations.
+Ensure one have PyTorch installed with CUDA support, alongside the system's hardware configurations.
 
 ```bash
 pip install torch transformers accelerate datasets
@@ -146,6 +162,17 @@ pip install torch transformers accelerate datasets
 ### Step 2: Performing the Model Surgery (surgery.py)
 This script loads a pre-trained model, freezes the Attention mechanics, and surgically replaces the target FFN matrices (gate_proj, up_proj, down_proj) with custom BitLinear layers initializing ternary states.
 
+What surgery_router.py actually does is takes the .gguf file (its is one single, solid, massive) 4.92 GB binary block.
+
+When surgery_router.py runs, it acts like an architect scanning a digital blueprint. It reads the file header to locate the precise starting and ending memory addresses of all 291 tensors.
+
+Once it has that map, it hands those coordinates over to the model loader. The layout engine uses this information to determine exactly where to route the data:
+
+The Attention Coordinates are told to stream directly into the fast GPU VRAM.
+
+The FFN Coordinates are told to stream into the spacious System RAM.
+
+Instead of physically editing the file on disk, one are conducting virtual surgery on how the model is arranged across the computer's hardware.
 
 ```
 // modify the graph builder
@@ -159,6 +186,7 @@ for (auto & tensor : model.tensors) {
         tensor.backend = GGML_BACKEND_CPU; 
     }
 }
+
 ```
 
 ### 🏥 Step 3: Post-Op Healing (Distillation / Fine-Tuning)
@@ -191,18 +219,6 @@ The Loop: During generation execution steps, layers process attention workflows 
 
 
 ---
-
-## 🪓 Step-by-Step Layer Anatomy
-
-### 1. Global Components (3 Tensors)
-These elements manage global input-output translations and token stabilization across the entire execution loop.
-*   `token_embd.weight`: Maps input text tokens into high-dimensional mathematical vectors.
-*   `output_norm.weight`: A final RMSNorm layer that stabilizes numeric values at the exit point.
-*   `output.weight`: Predicts and decodes raw mathematics back into text tokens.
-
-### 2. The 32 Repeating Decoder Layers (9 Tensors per Layer)
-Each individual block (`blk.0` through `blk.31`) is split into a **Pre-LN Attention Block** and a **Pre-LN SwiGLU Feed-Forward Block**:
-
 
 ## ⚠️ Known Implementation Limits
 The PCIe Bottleneck: Due to structural constraints on standard consumer motherboards, routing step data back and forth between VRAM and system memory introduces data traffic stalls. Average generation ranges between 5 to 12 tokens per second over typical PCIe 4.0 slots.
