@@ -8,34 +8,32 @@ This repository contains the tooling and research code required to perform archi
 
 Standard local AI inference engines offload models *horizontally* (by entire layer blocks). This project introduces **Vertical Precision Splitting**, dividing the workload based on hardware-specific computing strengths:
 
-              [ USER PROMPT ]
-                     │
-                     ▼
-    ┌──────────────────────────────────┐
-    │  Embedding Layer (FP16) - VRAM   │
-    └────────────────┬─────────────────┘
-                     │
-        ┌────────────┴────────────┐
-        ▼                         ▼
-
-
+                        [ USER PROMPT ]
+                               │
+                               ▼
+              ┌──────────────────────────────────┐
+              │  Embedding Layer (FP16) - VRAM   │
+              └────────────────┬─────────────────┘
+                               │
+                  ┌────────────┴────────────┐
+                  ▼                         ▼
         ┌───────────────────┐     ┌───────────────────┐
-│  Layer Attention  │     │   Layer FFN       │
-│    (Q4 / FP16)    │     │   (1.58-bit)      │
-├───────────────────┤     ├───────────────────┤
-│   RUNS ON GPU     │     │    RUNS ON CPU    │
-│  (Tensor Cores)   │     │  (Lookup Tables)  │
-└─────────┬─────────┘     └─────────┬─────────┘
-│                         │
-└────────────┬────────────┘
-│
-▼
-┌──────────────────────────────────┐
-│    LM Head Output (FP16) - VRAM  │
-└────────────────┬─────────────────┘
-│
-▼
-[ GENERATED TOKEN ]
+        │  Layer Attention  │     │   Layer FFN       │
+        │    (Q4 / FP16)    │     │   (1.58-bit)      │
+        ├───────────────────┤     ├───────────────────┤
+        │   RUNS ON GPU     │     │    RUNS ON CPU    │
+        │  (Tensor Cores)   │     │  (Lookup Tables)  │
+        └─────────┬─────────┘     └─────────┬─────────┘
+                  │                         │
+                  └────────────┬────────────┘
+                               │
+                               ▼
+              ┌──────────────────────────────────┐
+              │    LM Head Output (FP16) - VRAM  │
+              └────────────────┬─────────────────┘
+                               │
+                               ▼
+                       [ GENERATED TOKEN ]
 
 
 
