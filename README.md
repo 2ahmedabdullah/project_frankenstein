@@ -116,28 +116,46 @@ Once the attention block figures out how the words relate to each other, it pass
 4) ffnn_down.weight
 
 
-            [ Input Data ] (Size: 4,096)
-                                │
-                    ┌───────────┴───────────┐
-                    ▼                       ▼
-            1. ffnn_up               2. ffnn_gate
-            (Dense Layer)           (Dense Layer)
-            (Size: 14,336)          (Size: 14,336)
-                    │                       │
-                    │                       ▼
-                    │               [ Swish Activation ]
-                    │                       │
-                    └───────────┬───────────┘
-                                ▼
-                    [ Element-wise Multi ] (The Gate Filter)
-                                │
-                                ▼
-                            3. ffnn_down
-                        (Dense Layer)
-                        (Size: 4,096)
-                                │
-                                ▼
-                        [ Next Layer ]
+## 🗺️  DYNAMIC ARCHITECTURE MAP & TOPOLOGY GIST:
+
+          [ INPUT HIGHWAY VECTOR ] (Size: 4,096)
+                │
+                ▼
+    ┌──────────────────────────────────────────────────────┐
+    │  STAGE 1: ATTENTION BLOCK (Routed to GPU VRAM)       │
+    ├──────────────────────────────────────────────────────┤
+    │  • Input Norm   -> attn_norm.weight                  │
+    │  • Projections  -> Context Weights Matrix (Q, K, V)  │
+    │  • Output Mix   -> attn_output.weight                │
+    └──────────────────────────────────────────────────────┘
+                │
+                ▼
+         [ UPDATED DATA ] (Size: 4,096)
+                │
+                ├───────────────────────────┐
+                ▼                           ▼
+      ┌──────────────────────┐    ┌──────────────────────┐
+      │ STAGE 2A: ffn_up     │    │ STAGE 2B: ffn_gate   │
+      │ (Dense Fact Lookup)  │    │ (Routing Filter)     │
+      │ (Size: 14,336)       │    │ (Size: 14,336)       │
+      └──────────────────────┘    └──────────────────────┘
+                │                           │
+                │                           ▼
+                │                   [ Swish Activation ]
+                │                           │
+                └───────────┬───────────────┘
+                            ▼
+                [ Element-wise Multi ] (The Gate Filter)
+                            │
+                            ▼
+                ┌──────────────────────────┐
+                │ STAGE 2C: ffn_down       │
+                │ (Highway Compressor)     │
+                │ (Size: 4,096)            │
+                └──────────────────────────┘
+                            │
+                            ▼
+                  [ TO NEXT LAYER / BLOCK ]
 
 
 

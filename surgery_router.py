@@ -89,28 +89,44 @@ def perform_pure_python_surgery(model_path):
     # 4. Print the Real, Dynamic Architecture Map and Gist
     print("\n🗺️  DYNAMIC ARCHITECTURE MAP & TOPOLOGY GIST:")
     print(f"""
-    [ Input Data ] (Size: {hidden_size:,})
-          │
-          ├───────────────────────────┐
-          ▼                           ▼
-      1. ffn_up                   2. ffn_gate
-    (Dense Layer)               (Dense Layer)
-    (Size: {ffn_size:,})              (Size: {ffn_size:,})
-          │                           │
-          │                           ▼
-          │                   [ Swish Activation ]
-          │                           │
-          └───────────┬───────────────┘
-                      ▼
-          [ Element-wise Multi ] (The Gate Filter)
-                      │
-                      ▼
-                  3. ffn_down
-                 (Dense Layer)
-                 (Size: {hidden_size:,})
-                      │
-                      ▼
-                [ Next Layer ]
+          [ INPUT HIGHWAY VECTOR ] (Size: {hidden_size:,})
+                │
+                ▼
+    ┌────────────────────────────────────────────────────────┐
+    │  STAGE 1: ATTENTION BLOCK (Routed to GPU VRAM)         │
+    ├────────────────────────────────────────────────────────┤
+    │  • Input Norm   -> attn_norm.weight                    │
+    │  • Projections  -> Context Weights Matrix (Q, K, V)    │
+    │  • Output Mix   -> attn_output.weight                  │
+    └────────────────────────────────────────────────────────┘
+                │
+                ▼
+         [ UPDATED DATA ] (Size: {hidden_size:,})
+                │
+                ├───────────────────────────┐
+                ▼                           ▼
+      ┌──────────────────────┐    ┌──────────────────────┐
+      │ STAGE 2A: ffn_up     │    │ STAGE 2B: ffn_gate   │
+      │ (Dense Fact Lookup)  │    │ (Routing Filter)     │
+      │ (Size: {ffn_size:,}) │    │ (Size: {ffn_size:,}) │
+      └──────────────────────┘    └──────────────────────┘
+                │                           │
+                │                           ▼
+                │                   [ Swish Activation ]
+                │                           │
+                └───────────┬───────────────┘
+                            ▼
+                [ Element-wise Multi ] (The Gate Filter)
+                            │
+                            ▼
+                ┌──────────────────────────┐
+                │ STAGE 2C: ffn_down       │
+                │ (Highway Compressor)     │
+                │ (Size: {hidden_size:,})  │
+                └──────────────────────────┘
+                            │
+                            ▼
+                  [ TO NEXT LAYER / BLOCK ]
     """)
     
     print("🧮 LIVE ARCHITECTURAL MATHEMATICS:")
@@ -129,7 +145,7 @@ if __name__ == "__main__":
     MODEL_PATH = "./models/Meta-Llama-3-8B-Instruct-Q4_K_M.gguf"
     
     if not os.path.exists(MODEL_PATH):
-        print(f"❌ Error: Model file not found at {MODEL_PATH}. Check your path!")
+        print(f"❌ Error: Model file not found at {MODEL_PATH}. Check path!")
         sys.exit(1)
         
     perform_pure_python_surgery(MODEL_PATH)
