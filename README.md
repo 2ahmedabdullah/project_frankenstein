@@ -1,6 +1,6 @@
 # 🧬 Project Frankenstein: Hybrid-Precision Model Surgery
 
-This repository contains the tooling and research code required to perform architectural "surgery" on standard Transformer models (e.g., Llama, Qwen). Instead of training an LLM from scratch, this project surgically splits a pre-trained model down the center of its transformer blocks—preserving high-precision Attention layers for execution in GPU VRAM while grafting ultra-low 1.58-bit ternary Feed-Forward Networks (FFNNs) for execution in host system RAM via CPU lookup tables.
+This repository contains the tooling and research code required to perform architectural "surgery" on standard Transformer models (e.g., Llama, Qwen). Instead of training an LLM from scratch, this project surgically splits a pre-trained model down the center of its transformer blocks. The approach retains high-precision attention layers while replacing feed-forward layers with ternary representations inspired by BitNet.
 
 
 ## ⚙️ Target Hardware (The Constraints)
@@ -56,7 +56,7 @@ This project introduces **Vertical Precision Splitting**, dividing the workload 
 
 
 
-### Target Hardware Allocation (Optimized for 6GB VRAM / 24GB RAM)
+### Target Hardware Allocation
 
 | Component Layer | Parameter Weight | Targeted Precision | Target Hardware | Memory Footprint |
 | :--- | :--- | :--- | :--- | :--- |
@@ -88,7 +88,7 @@ Before the model even starts processing language layer-by-layer, it needs a few 
 
 ### 💡 Part 2: The Attention Block (5 Tensors)
 
-This block is responsible for looking at a word and figuring out which other words in the sentence it relates to. To do this mathematically, it needs 5 distinct tensors:
+The attention block computes contextual relationships between tokens by generating query, key, and value projections. To do this mathematically, it needs 5 distinct tensors:
 
 1) attn_norm.weight: An RMS (Root Mean Square) Normalization tensor. It cleans up, scales, and stabilizes the data entering the layer so the math doesn't spiral out of control.
 
@@ -105,7 +105,7 @@ Advanced Note: In standard Transformers, Q, K, and V usually have the exact same
 
 ### 💡 Part 3: The Feed-Forward Neural Network / FFNN (4 Tensors)
 
-Once the attention block figures out how the words relate to each other, it passes the data to the FFN. The FFN acts like a massive local encyclopedia lookup. It uses 4 tensors:
+Once the attention block figures out how the words relate to each other, it passes the data to the FFN. The feed-forward network (FFN) performs a nonlinear transformation on each token representation independently and contains the majority of the model parameters. It uses 4 tensors:
 
 1) ffnn_norm.weight: Another normalization tensor that stabilizes the data right before it hits the heavy fact-checking math.
 
@@ -178,7 +178,7 @@ pip install torch transformers accelerate datasets
 ```
 
 ### Step 2: Performing the Model Surgery (surgery.py)
-This script loads a pre-trained model, freezes the Attention mechanics, and surgically replaces the target FFN matrices (gate_proj, up_proj, down_proj) with custom BitLinear layers initializing ternary states.
+This script loads a pre-trained model, preserves the attention layers, and replaces selected FFNN matrices with custom BitLinear modules initialized using ternary weights (gate_proj, up_proj, down_proj).
 
 
                        [ Original Q4_K_M Model ]
@@ -227,8 +227,9 @@ This script loads a pre-trained model, freezes the Attention mechanics, and surg
         
 
 
-### The "Cell-Level Transformer"
-This function handles the raw math. Its single goal is to take a high-precision layer matrix and crush it into a ternary state ($-1$, $0$, or $+1$).
+### The "Ternary Quantization Pipeline"
+
+This function handles the raw math. The quantization routine converts floating-point weight tensors into ternary representations while retaining a scaling factor for reconstruction. ($-1$, $0$, or $+1$).
 
 Step 1: Raw Data Extraction 
 
@@ -242,7 +243,7 @@ $$\Delta = 0.7 \times \text{Mean}(|W|)$$
 
 When multiplied the absolute mean by 0.7, one draws two sharp lines right in the middle of that bell curve:
 
-The Dead Zone (Set to 0): Any weight that falls inside the $-\Delta$ to $+\Delta$ window is deemed "background noise." The script aggressively zeroes them out. This accounts for roughly 30% to 40% of the matrix, creating sparsity which makes CPU memory streaming incredibly efficient.
+The Dead Zone (Set to 0): Any weight that falls inside the $-\Delta$ to $+\Delta$ window is deemed "background noise." Weights within the threshold are mapped to zero, increasing sparsity while reducing storage requirements. This accounts for roughly 30% to 40% of the matrix, increasing sparsity, which may improve memory efficiency depending on the execution backend.
 
 The Positive Charge (Set to +1): Any weight resting safely above $+\Delta$ is a strong positive signal.
 
@@ -265,18 +266,18 @@ Standard Weight Distribution Curve
                         
 ⚖️ Why exactly 0.7? 
 
-The number 0.7 was found through structural optimization to minimize Quantization Noise (the loss of intelligence when one crush numbers).
+The threshold coefficient (0.7) was selected empirically during preliminary experiments to balance sparsity and reconstruction quality.
 
 If the number was too low (e.g., 0.1): Almost no weights would become 0. The script would force almost everything to $+1$ or $-1$. one lose the ability to have "neutral" weights, completely breaking the model's factual retention.
 
 If the number was too high (e.g., 1.5): The threshold would be too wide. The script would wipe out 80% of the weights to 0. One destroy too much information, and the model goes braindead (outputs total gibberish that even fine-tuning cannot heal).
 
-By using 0.7, onemathematically guarantee that the structural variance of the newly squeezed 1.58-bit ternary matrix matches the variance of the original high-precision matrix as closely as possible, allowing the laptop CPU to process a highly optimized, clean database.
+By using 0.7, it aims to preserve that the structural variance of the newly squeezed 1.58-bit ternary matrix matches the variance of the original high-precision matrix as closely as possible, allowing the laptop CPU to process a compact ternary representation.
             
 
 Step 4: Keeping the Magnitude (scale)
 
-Because turning numbers into raw $-1$, $0$, and $1$ destroys the scaling magnitude of the model's knowledge, it calculates a single scale float (the maximum absolute value of the original tensor). It returns both the newly flattened matrix and this scale multiplier.
+Because turning numbers into raw $-1$, $0$, and $1$ removes the original weight magnitude information, it calculates a single scale float (the maximum absolute value of the original tensor). It returns both the ternary weight matrix and this scale multiplier.
 
 
 ```
@@ -287,7 +288,7 @@ for (auto & tensor : model.tensors) {
         tensor.backend = GGML_BACKEND_GPU; 
     } 
     else if (tensor.name.contains("mlp") || tensor.name.contains("ffn")) {
-        // Force the massive factual layers onto the 24GB System RAM
+        // Force the massive feed-forward layers onto the 24GB System RAM
         tensor.backend = GGML_BACKEND_CPU; 
     }
 }
@@ -295,11 +296,11 @@ for (auto & tensor : model.tensors) {
 ```
 
 ### 🏥 Step 3: Post-Op Healing (Distillation / Fine-Tuning)
-Directly after surgery, the model will output gibberish due to a language mismatch between the smooth floating-point attention layers and the blocky ternary FFN layers.
+Immediately after replacement, the modified model is expected to experience significant quality degradation due to the change in numerical representation. The model will output gibberish due to a language mismatch between the smooth floating-point attention layers and the blocky ternary FFN layers.
 
 
 
-To bridge this gap, run the training pipeline with Quantization-Aware Fine-Tuning (QAFT). We pass an open-source instructional dataset through the model for 3–5 epochs, keeping the attention weights strictly locked. This forces the new 1.58-bit FFN parameters to adapt to their new host ecosystem.
+To bridge this gap, run the training pipeline with Quantization-Aware Fine-Tuning (QAFT). We pass an open-source instructional dataset through the model for 3–5 epochs, keeping the attention weights strictly locked. The fine-tuning stage adapts the ternary FFN parameters while keeping the attention weights frozen.
 
 
 ```
@@ -319,7 +320,7 @@ Device 0 (CUDA): Allocates the static KV Cache arrays, input context embedding t
 
 Device 1 (CPU): Maps the large ternary FFN weights as unmultiplied tensor arrays within system memory.
 
-The Loop: During generation execution steps, layers process attention workflows via CUDA, ping tokens over the PCIe lanes to system RAM for integer addition processing inside the ternary FFN layers, and pull the activation tensor blocks back to the GPU to complete the loop cycle.
+The Loop: During generation execution steps, layers process attention workflows via CUDA, transfer intermediate activations across PCIe to system RAM for integer addition processing inside the ternary FFN layers, and pull the activation tensor blocks back to the GPU to complete the loop cycle.
 
 ## Repo Structure
 
@@ -363,7 +364,8 @@ project-frankenstein/
        ▼
  6. THE NERVOUS SYSTEM (inference/hybrid_runner.cpp via Makefile)
  └── Reads the mutant file. Pushes Attention to the laptop's 6GB VRAM (GPU).
- └── Pushes the 1.58-bit FFN arrays to the 24GB System RAM (CPU) for blazingly fast integer additions.
+ └── Pushes the 1.58-bit FFN arrays to the 24GB System RAM (CPU) for low-cost integer arithmetic.
+ 
  ```
 
 ## ⚠️ Known Implementation Limits
