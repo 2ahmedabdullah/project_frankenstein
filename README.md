@@ -277,7 +277,7 @@ By using 0.7, it aims to preserve that the structural variance of the newly sque
 
 ### Mutation Results and Analysis
 
-
+```
 🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_down.weight (System RAM)
 🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_gate.weight (System RAM)
 🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_up.weight (System RAM)
@@ -291,11 +291,12 @@ By using 0.7, it aims to preserve that the structural variance of the newly sque
 💾 Committing surgical changes to final file payload...
 
 🎉 Surgery Complete! Mutant Architecture Saved at: ./models/Llama-3.2-3B-Instruct-Mutant.gguf
-
+```
 
 
 ### 📊 SIDE-BY-SIDE DISTRIBUTION PROFILE FOR: blk.0.ffn_gate.weight
 
+```
 ===================================================================================================================
 ORIGINAL MODEL (Continuous)                             | MUTANT MODEL (Ternary 1.58b)                           
 ===================================================================================================================
@@ -305,7 +306,7 @@ ORIGINAL MODEL (Continuous)                             | MUTANT MODEL (Ternary 
 [153.00 to 204.00]  35.98% █████████████████            |                                                        
 [204.00 to 255.00]   8.69% ████                         |                                                        
 ===================================================================================================================
-
+```
 
 
 ```
