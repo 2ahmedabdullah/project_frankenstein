@@ -338,33 +338,6 @@ project-frankenstein/
 └── inference/
     ├── Makefile                                   
     └── hybrid_runner.cpp                            <-- (C++ engine)
-```
-
-```text
-1. THE PATIENT (download.py)
- └── Downloads Meta-Llama-3-8B-Instruct-Q4_K_M.gguf straight to the /models directory.
-       │
-       ▼
- 2. THE DIAGNOSTIC (diagnosis.py)
- └── Scans the file layout, mapping out the 291 total tensors across 32 structural blocks.
-       │
-       ▼
- 3. THE SCALPEL (surgery.py)
- └── Feeds the FFN tensors into the ternary_158_quantize() filter using the 0.7 Δ threshold.
- └── Leaves Attention tensors pristine. Welds custom ".scale" tracking vectors to the FFN blocks.
-       │
-       ▼
- 4. THE MUTANT (Meta-Llama-3-8B-Surgically-Split-1.58b.gguf)
- └── Saved to disk. It features high-precision context layers and ultra-lean database layers.
-       │
-       ▼
- 5. THE HEALING (healing.py)
- └── Fine-tunes the mutant with Quantization-Aware Fine-Tuning (QAFT) so the layers synchronize.
-       │
-       ▼
- 6. THE NERVOUS SYSTEM (inference/hybrid_runner.cpp via Makefile)
- └── Reads the mutant file. Pushes Attention to the laptop's 6GB VRAM (GPU).
- └── Pushes the 1.58-bit FFN arrays to the 24GB System RAM (CPU) for low-cost integer arithmetic.
  
  ```
 
