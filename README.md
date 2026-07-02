@@ -180,17 +180,22 @@ pip install torch transformers accelerate datasets
 ### Step 2: Performing the Model Surgery (surgery.py)
 This script loads a pre-trained model, freezes the Attention mechanics, and surgically replaces the target FFN matrices (gate_proj, up_proj, down_proj) with custom BitLinear layers initializing ternary states.
 
-What surgery_router.py actually does is takes the .gguf file (its is one single, solid, massive) 4.92 GB binary block.
 
-When surgery_router.py runs, it acts like an architect scanning a digital blueprint. It reads the file header to locate the precise starting and ending memory addresses of all 291 tensors.
+        [ Original Q4_K_M Model ]
+                    │
+                    ▼
+            ┌───────────────┐
+            │  surgery.py   │  ◄── Converts FFN layers to Ternary Space (-1, 0, 1)
+            └───────┬───────┘
+                    ▼
+            [ Frankenstein GGUF ] ──► Loaded into the Custom C++ Inference Engine
+                                            │
+                         ┌──────────────────┴──────────────────┐
+                         ▼                                     ▼
+                [ Attention Blocks ]                    [ FFN Blocks ]
+                Routed to GPU VRAM                  Routed to System RAM
+            (Heavy floating-point math)         (Pure Addition/Subtraction)
 
-Once it has that map, it hands those coordinates over to the model loader. The layout engine uses this information to determine exactly where to route the data:
-
-The Attention Coordinates are told to stream directly into the fast GPU VRAM.
-
-The FFN Coordinates are told to stream into the spacious System RAM.
-
-Instead of physically editing the file on disk, one are conducting virtual surgery on how the model is arranged across the computer's hardware.
 
 ```
 // modify the graph builder
