@@ -42,16 +42,55 @@ def perform_model_surgery(src_path, dest_path):
     reader = GGUFReader(src_path)
     writer = GGUFWriter(dest_path, arch="llama")
 
-    # 1. Clone original metadata fields using the native structural copier
+    # 1. Cleanly un-nest and clone original metadata fields
     print("🧬 Replicating hyperparameter metadata...")
     for field in reader.fields.values():
-        if field.name == "general.architecture":
+        name = field.name
+        
+        # Avoid writing duplicate headers or our explicit tracking tags
+        if name in ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", 
+                    "general.architecture", "surgery.split_execution", "surgery.ffn_format"]:
             continue
+            
         try:
-            # Use native field duplication to securely retain complex sequence arrays
-            writer.add_field(field)
-        except Exception:
-            pass
+            if len(field.parts) > 0 and len(field.types) > 0:
+                val_type = field.types[0]
+                raw_val = field.parts[-1]
+                
+                # Pre-process NumPy arrays safely
+                if isinstance(raw_val, np.ndarray):
+                    # ONLY flatten to a scalar if it's not supposed to be an array field
+                    if raw_val.size == 1 and val_type != GGUFValueType.ARRAY:
+                        raw_val = raw_val.item()
+                    else:
+                        raw_val = raw_val.tolist()
+
+                # If it's an ARRAY type or became a list after processing
+                if val_type == GGUFValueType.ARRAY or isinstance(raw_val, list):
+                    # Ensure raw_val is wrapped as an iterable if it somehow escaped as a scalar
+                    if not isinstance(raw_val, list):
+                        raw_val = [raw_val]
+                        
+                    clean_list = []
+                    for item in raw_val:
+                        if isinstance(item, bytes):
+                            clean_list.append(str(item, encoding="utf-8"))
+                        elif hasattr(item, "item"):
+                            clean_list.append(item.item())
+                        else:
+                            clean_list.append(item)
+                            
+                    writer.add_array(name, clean_list)
+                    continue
+
+                # Handle regular non-array scalar values
+                if isinstance(raw_val, bytes):
+                    raw_val = str(raw_val, encoding="utf-8")
+
+                writer.add_key_value(name, raw_val, val_type)
+                
+        except Exception as e:
+            print(f"  ⚠️ Skipping metadata key '{name}' due to parsing friction: {e}")
 
     # Add custom surgical tracking metadata using strict raw types
     writer.add_key_value("surgery.split_execution", True, GGUFValueType.BOOL)  
