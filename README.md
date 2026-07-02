@@ -59,7 +59,18 @@ The model blueprint is composed of two primary sections: **Global Setup Layers**
 
 
 
-### 🧵 Part 1: The Attention Block (5 Tensors)
+### 💡 Part 1: The Global Parts (3 Tensors)
+
+Before the model even starts processing language layer-by-layer, it needs a few global components:
+
+1) token_embd.weight: The "translator" that turns the text words into math numbers.
+
+2) output_norm.weight: A tool that cleans up and stabilizes the math at the very end.
+
+3) output.weight: The final translator that turns the math numbers back into readable text words.
+
+
+### 💡 Part 2: The Attention Block (5 Tensors)
 
 This block is responsible for looking at a word and figuring out which other words in the sentence it relates to. To do this mathematically, it needs 5 distinct tensors:
 
@@ -73,9 +84,10 @@ This block is responsible for looking at a word and figuring out which other wor
 
 5) attn_output.weight: After Q, K, and V interact, this tensor projects the combined result back into the model's main data highway.
 
-💡 Advanced Note: In standard Transformers, Q, K, and V usually have the exact same size. However, Llama 3 uses Grouped-Query Attention (GQA). It uses 32 heads for Queries but scales down to just 8 heads for Keys and Values. Even though the sizes are smaller to save memory, they still require their own individual tensors!
+Advanced Note: In standard Transformers, Q, K, and V usually have the exact same size. However, Llama 3 uses Grouped-Query Attention (GQA). It uses 32 heads for Queries but scales down to just 8 heads for Keys and Values. Even though the sizes are smaller to save memory, they still require their own individual tensors!
 
-### 📚 Part 2: The Feed-Forward Neural Network / FFNN (4 Tensors)
+
+### 💡 Part 3: The Feed-Forward Neural Network / FFNN (4 Tensors)
 
 Once the attention block figures out how the words relate to each other, it passes the data to the FFN. The FFN acts like a massive local encyclopedia lookup. It uses 4 tensors:
 
@@ -125,7 +137,7 @@ $$\text{Total Tensors} = 3 + (32 \times 9) = \mathbf{291}$$
 ## ⚡ Quick Start: Execution Pipeline
 
 ### Step 1: Prerequisites & Environment Setup
-Ensure you have PyTorch installed with CUDA support, alongside your system's hardware configurations.
+Ensure you have PyTorch installed with CUDA support, alongside the system's hardware configurations.
 
 ```bash
 pip install torch transformers accelerate datasets
@@ -139,11 +151,11 @@ This script loads a pre-trained model, freezes the Attention mechanics, and surg
 // modify the graph builder
 for (auto & tensor : model.tensors) {
     if (tensor.name.contains("self_attn")) {
-        // Force attention mechanisms onto your 6GB RTX GPU
+        // Force attention mechanisms onto the 6GB RTX GPU
         tensor.backend = GGML_BACKEND_GPU; 
     } 
     else if (tensor.name.contains("mlp") || tensor.name.contains("ffn")) {
-        // Force the massive factual layers onto your 24GB System RAM
+        // Force the massive factual layers onto the 24GB System RAM
         tensor.backend = GGML_BACKEND_CPU; 
     }
 }
