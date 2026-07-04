@@ -26,34 +26,55 @@ Standard local AI inference engines offload models *horizontally* (by entire lay
 This project introduces **Vertical Precision Splitting**, dividing the workload based on hardware-specific computing strengths:
 
 
-                        [ USER PROMPT ]
-                               │
-                               ▼
-              ┌──────────────────────────────────┐
-              │  Embedding Layer (FP16) - VRAM   │
-              └────────────────┬─────────────────┘
-                               │
-                  ┌────────────┴────────────┐
-                  ▼                         ▼
-        ┌───────────────────┐     ┌───────────────────┐
-        │  Layer Attention  │     │   Layer FFN       │
-        │    (Q4 / FP16)    │     │   (1.58-bit)      │
-        ├───────────────────┤     ├───────────────────┤
-        │   RUNS ON GPU     │     │    RUNS ON CPU    │
-        │  (Tensor Cores)   │     │  (Lookup Tables)  │
-        └─────────┬─────────┘     └─────────┬─────────┘
-                  │                         │
-                  └────────────┬────────────┘
-                               │
-                               ▼
-              ┌──────────────────────────────────┐
-              │    LM Head Output (FP16) - VRAM  │
-              └────────────────┬─────────────────┘
-                               │
-                               ▼
-                       [ GENERATED TOKEN ]
-
-
+                           [ Original Model ]
+                                   │
+                                   ▼
+                 [ GGUFReader loops through Tensors ]
+                                   │
+                 ┌─────────────────┴─────────────────┐
+                 │ (Is it an Attention Tensor?)      │(Is it an FFN Tensor?)
+                 ▼                                   ▼ 
+         ┌───────────────┐                   ┌───────────────────────────┐
+         │ Pass Through  │                   │ ternary_158_quantize()    │
+         │  Unchanged    │                   ├───────────────────────────┤
+         └───────┬───────┘                   │ 1. Compute Threshold      │
+                 │                           │ 2. Clamp to -1, 0, 1      │
+                 │                           │ 3. Calculate Scale Factor │
+                 │                           └─────────────┬─────────────┘
+                 │                                         │
+                 ▼                                         ▼
+         ┌───────────────────────────────────────────────────────────────┐
+         │                 perform_model_surgery()                       │
+         │  Assembles & Writes Final Custom GGUF File to Disk            │
+         └───────────────────────────────────────────────────────────────┘
+                                    │     
+                                    ▼
+                          [ Frankenstein GGUF ] (Mutant GGUF file)
+                                    │
+                                    ▼
+                            ┌───────────────┐
+                            │ C++ Execution │  ◄── Routes Attn -> GPU VRAM
+                            │    Engine     │  ◄── Routes FFN  -> System RAM (CPU)
+                            └───────┬───────┘
+                                    │
+                  ┌─────────────────┴─────────────────┐
+                  ▼ (If name contains "attn")         ▼ (If name contains "mlp"/"ffn")
+        ┌──────────────────────┐         ┌───────────────────────────┐
+        │  GGML_BACKEND_GPU    │         │     GGML_BACKEND_CPU      │
+        ├──────────────────────┤         ├───────────────────────────┤
+        │ Routes to 6GB VRAM   │         │ Routes to 24GB System RAM │
+        │ Smooth FP16/Q4 Math  │         │ Pure Addition/Subtraction │
+        └──────────┬───────────┘         └─────────────┬─────────────┘
+                   │                                   │
+                   └────────────────┬──────────────────┘
+                                    ▼
+                   ┌──────────────────────────────────┐
+                   │    LM Head Output (FP16) - VRAM  │
+                   └────────────────┬─────────────────┘
+                                    │
+                                    ▼
+                    [ Active Inference Token Loop ]
+        
 
 
 ### Target Hardware Allocation
@@ -181,50 +202,6 @@ pip install torch transformers accelerate datasets
 This script loads a pre-trained model, preserves the attention layers, and replaces selected FFNN matrices with custom BitLinear modules initialized using ternary weights (gate_proj, up_proj, down_proj).
 
 
-                       [ Original Q4_K_M Model ]
-                                   │
-                                   ▼
-                 [ GGUFReader loops through Tensors ]
-                                   │
-                 ┌─────────────────┴─────────────────┐
-                 │ (Is it an Attention Tensor?)      │(Is it an FFN Tensor?)
-                 ▼                                   ▼ 
-         ┌───────────────┐                   ┌───────────────────────────┐
-         │ Pass Through  │                   │ ternary_158_quantize()    │
-         │  Unchanged    │                   ├───────────────────────────┤
-         └───────┬───────┘                   │ 1. Compute Threshold      │
-                 │                           │ 2. Clamp to -1, 0, 1      │
-                 │                           │ 3. Calculate Scale Factor │
-                 │                           └─────────────┬─────────────┘
-                 │                                         │
-                 ▼                                         ▼
-         ┌───────────────────────────────────────────────────────────────┐
-         │                 perform_model_surgery()                       │
-         │  Assembles & Writes Final Custom GGUF File to Disk            │
-         └───────────────────────────────────────────────────────────────┘
-                                    │     
-                                    ▼
-                          [ Frankenstein GGUF ] (Mutant GGUF file)
-                                    │
-                                    ▼
-                            ┌───────────────┐
-                            │ C++ Execution │  ◄── Routes Attn -> GPU VRAM
-                            │    Engine     │  ◄── Routes FFN  -> System RAM (CPU)
-                            └───────┬───────┘
-                                    │
-                  ┌─────────────────┴─────────────────┐
-                  ▼ (If name contains "attn")         ▼ (If name contains "mlp"/"ffn")
-        ┌──────────────────────┐         ┌───────────────────────────┐
-        │  GGML_BACKEND_GPU    │         │     GGML_BACKEND_CPU      │
-        ├──────────────────────┤         ├───────────────────────────┤
-        │ Routes to 6GB VRAM   │         │ Routes to 24GB System RAM │
-        │ Smooth FP16/Q4 Math  │         │ Pure Addition/Subtraction │
-        └──────────┬───────────┘         └─────────────┬─────────────┘
-                   │                                   │
-                   └────────────────┬──────────────────┘
-                                    ▼
-                    [ Active Inference Token Loop ]
-        
 
 
 ### The "Ternary Quantization Pipeline": The Mathematical Transformation
