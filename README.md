@@ -244,6 +244,8 @@ Instead of using a fixed static threshold, your code calculates a dynamic thresh
 
 $$\Delta = 0.7 \times \frac{1}{32}\sum_{i=1}^{32} |W_i|$$
 
+$$\Delta = 0.7 \times \text{Mean}(|W|)$$
+
 Step B: The Squeeze (Ternary Mapping)
 
 Every continuous floating-point value inside that 32-element weight chunk is mapped into an idealized, discrete ternary state space $D \in \{-1, 0, 1\}$ based on the dynamic boundaries:
@@ -253,36 +255,6 @@ $$D_i = \begin{cases}
 0 & \text{if } -\Delta \le W_i \le \Delta \\
 -1 & \text{if } W_i < -\Delta 
 \end{cases}$$
-
-
-Step C: Scaled Reconstruction
-
-To track performance metrics during validation (Simulated Mode), the numbers are projected back into floating-point approximations ($W'$) by scaling the discrete charges by the dynamic block boundary:
-
-$$W'_i = D_i \times \Delta$$
-
-Because roughly 30% to 40% of the weights naturally fall into the "Dead Zone" ($0$), the matrix becomes highly sparse. When evaluating $W'$, your Mean Squared Error (MSE) is incredibly low because $\Delta$ precisely preserves the underlying variance of the original distribution.
-
-
-This function handles the raw math. The quantization routine converts floating-point weight tensors into ternary representations while retaining a scaling factor for reconstruction. ($-1$, $0$, or $+1$).
-
-Step 1: Raw Data Extraction 
-
-It checks if the incoming tensor is readable as floating-point math (np.float32). If it is still compressed or in bytes, it converts it to clean, raw floats so it can perform calculations.
-
-Step 2: Finding the Dynamic Threshold Line ($\Delta$)
-
-Most weights in a neural network layer follow a Gaussian (Normal) Distribution—meaning a huge cluster of weights sit very close to zero, while fewer, more powerful weights stretch out to the positive and negative sides.
-
-$$\Delta = 0.7 \times \text{Mean}(|W|)$$
-
-When multiplied the absolute mean by 0.7, one draws two sharp lines right in the middle of that bell curve:
-
-The Dead Zone (Set to 0): Any weight that falls inside the $-\Delta$ to $+\Delta$ window is deemed "background noise." Weights within the threshold are mapped to zero, increasing sparsity while reducing storage requirements. This accounts for roughly 30% to 40% of the matrix, increasing sparsity, which may improve memory efficiency depending on the execution backend.
-
-The Positive Charge (Set to +1): Any weight resting safely above $+\Delta$ is a strong positive signal.
-
-The Negative Charge (Set to -1): Any weight resting safely below $-\Delta$ is a strong negative inhibitor.
 
 
 Standard Weight Distribution Curve
@@ -298,6 +270,26 @@ Standard Weight Distribution Curve
      (Strong Neg) │       │◄───────────►│       │ (Strong Pos)
                   ▼       ▼             ▼       ▼
                           (Squeezed to 0)        
+
+This function handles the raw math. The quantization routine converts floating-point weight tensors into ternary representations while retaining a scaling factor for reconstruction. ($-1$, $0$, or $+1$).
+
+The Dead Zone (Set to 0): Any weight that falls inside the $-\Delta$ to $+\Delta$ window is deemed "background noise." Weights within the threshold are mapped to zero, increasing sparsity while reducing storage requirements. This accounts for roughly 30% to 40% of the matrix, increasing sparsity, which may improve memory efficiency depending on the execution backend.
+
+The Positive Charge (Set to +1): Any weight resting safely above $+\Delta$ is a strong positive signal.
+
+The Negative Charge (Set to -1): Any weight resting safely below $-\Delta$ is a strong negative inhibitor.
+
+
+Step C: Scaled Reconstruction
+
+To track performance metrics during validation (Simulated Mode), the numbers are projected back into floating-point approximations ($W'$) by scaling the discrete charges by the dynamic block boundary:
+
+$$W'_i = D_i \times \Delta$$
+
+Because roughly 30% to 40% of the weights naturally fall into the "Dead Zone" ($0$), the matrix becomes highly sparse. When evaluating $W'$, your Mean Squared Error (MSE) is incredibly low because $\Delta$ precisely preserves the underlying variance of the original distribution.
+
+
+
                         
 ⚖️ Why exactly 0.7? 
 
