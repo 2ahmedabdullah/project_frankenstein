@@ -78,7 +78,8 @@ This project introduces **Vertical Precision Splitting**, dividing the workload 
                                     │
                                     ▼
                         ┌───────────────────────┐
-                        │   Post Healing Step   │ (Frankenstein GGUF file saved)
+                        │     Post Healing      │ (Fine-tuning step: Frankenstein GGUF file saved)
+                        │    Fine-Tuning Step   │ 
                         └───────────┬───────────┘
                                     ▼
                             ┌───────────────┐
@@ -322,6 +323,10 @@ By using 0.7, it aims to preserve that the structural variance of the newly sque
 
 🎉 Surgery Complete! Mutant Architecture Saved at: ./models/Llama-3.2-3B-Instruct-Mutant.gguf
 ```
+
+
+📊 Summary ComparisonPropertyMutant ModelHeaderPatched ModelTensor Data PayloadQuantized 1.58-bit RadixQuantized 1.58-bit Radix (Identical)Internal Tensor ShapesRaw custom dimensionsInverted column-major dimensionsGlobal GGUF HeaderOutdated (Claims FFN is 8192)Corrected (Claims FFN is 2304)llama.cpp Compatibility❌ Fails dimension checks✅ Passes and initializes
+
 
 
 ### 📊 SIDE-BY-SIDE DISTRIBUTION PROFILE FOR: blk.0.ffn_gate.weight
