@@ -22,26 +22,26 @@ OS           = "Windows 11"
 ## Physical Layout Comparison
 
 
-[ Original Track: Pure FP16 ]
-Shape: 32 elements  |  Size: 32 × 2 bytes = 64 bytes total
-┌───┬───┬───┬───┐ ... ┌───┐
-│F16│F16│F16│F16│     │F16│  <- Every single weight is 2 raw bytes.
-└───┴───┴───┴───┘     └───┘
+        [ Original Track: Pure FP16 ]
+        Shape: 32 elements  |  Size: 32 × 2 bytes = 64 bytes total
+        ┌───┬───┬───┬───┐ ... ┌───┐
+        │F16│F16│F16│F16│     │F16│  <- Every single weight is 2 raw bytes.
+        └───┴───┴───┴───┘     └───┘
 
 
-[ Simulated Track: Blocked Ternary in Float Container ]
-Shape: 32 elements  |  Size: 32 × 2 bytes = 64 bytes total
-┌───┬───┬───┬───┐ ... ┌───┐
-│ 0 │-Δ │+Δ │ 0 │     │-Δ │  <- Still 64 bytes on disk, but values are snapped
-└───┴───┴───┴───┘     └───┘     to ternary boundaries multiplied by block scale.
+        [ Simulated Track: Blocked Ternary in Float Container ]
+        Shape: 32 elements  |  Size: 32 × 2 bytes = 64 bytes total
+        ┌───┬───┬───┬───┐ ... ┌───┐
+        │ 0 │-Δ │+Δ │ 0 │     │-Δ │  <- Still 64 bytes on disk, but values are snapped
+        └───┴───┴───┴───┘     └───┘     to ternary boundaries multiplied by block scale.
 
 
-[ Mutant Track: True 1.58-Bit Radix Pack ]
-Shape: 1 Flat Compressed Chunk  |  Size: Exactly 9 bytes total
-┌───────────────┬──────────────────────────────────────────┐
-│ Scale (FP16)  │ Packed Base-3 Radix Byte Array Payload   │
-│    2 Bytes    │                 7 Bytes                  │
-└───────────────┴──────────────────────────────────────────┘
+        [ Mutant Track: True 1.58-Bit Radix Pack ]
+        Shape: 1 Flat Compressed Chunk  |  Size: Exactly 9 bytes total
+        ┌───────────────┬──────────────────────────────────────────┐
+        │ Scale (FP16)  │ Packed Base-3 Radix Byte Array Payload   │
+        │    2 Bytes    │                 7 Bytes                  │
+        └───────────────┴──────────────────────────────────────────┘
 
 
 ## 🏗️ Architecture Overview
