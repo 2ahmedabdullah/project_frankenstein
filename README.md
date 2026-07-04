@@ -231,15 +231,15 @@ This script loads a pre-trained model, preserves the attention layers, and repla
 
 ### The "Ternary Quantization Pipeline": The Mathematical Transformation
 
-We are deliberately leaving the Attention Layers completely untouched because they handle the contextual relationships between tokens. Instead, we are surgically targeting the Feed-Forward Network (FFN) layers. In a standard Llama-style block, the FFN operation is typically defined using SwiGLU activation:
+Deliberately leaving the Attention Layers completely untouched because they handle the contextual relationships between tokens. Instead, surgically targeting the Feed-Forward Network (FFN) layers. In a standard Llama-style block, the FFN operation is typically defined using SwiGLU activation:
 
 $$\text{FFN}(X) = (\text{Swish}(X \cdot W_{\text{gate}}) \odot (X \cdot W_{\text{up}})) \cdot W_{\text{down}}$$
 
-Each of these three weight matrices ($W_{\text{gate}}, W_{\text{up}}, W_{\text{down}}$) is a massive high-precision high-dimensional tensor. Here is how your quantization pipeline alters them mathematically step-by-step:
+Each of these three weight matrices ($W_{\text{gate}}, W_{\text{up}}, W_{\text{down}}$) is a massive high-precision high-dimensional tensor. Here is how the quantization pipeline alters them mathematically step-by-step:
 
 Step A: The Abs-Mean Threshold ($\Delta$)
 
-Instead of using a fixed static threshold, your code calculates a dynamic threshold $\Delta$ tailored to the variance of each discrete 32-element chunk (block) inside the weight matrix:
+Instead of using a fixed static threshold, the code calculates a dynamic threshold $\Delta$ tailored to the variance of each discrete 32-element chunk (block) inside the weight matrix:
 
 $$\Delta = 0.7 \times \frac{1}{32}\sum_{i=1}^{32} |W_i|$$
 
@@ -285,7 +285,7 @@ To track performance metrics during validation (Simulated Mode), the numbers are
 
 $$W'_i = D_i \times \Delta$$
 
-Because roughly 30% to 40% of the weights naturally fall into the "Dead Zone" ($0$), the matrix becomes highly sparse. When evaluating $W'$, your Mean Squared Error (MSE) is incredibly low because $\Delta$ precisely preserves the underlying variance of the original distribution.
+Because roughly 30% to 40% of the weights naturally fall into the "Dead Zone" ($0$), the matrix becomes highly sparse. When evaluating $W'$, the Mean Squared Error (MSE) is incredibly low because $\Delta$ precisely preserves the underlying variance of the original distribution.
 
 
 
@@ -380,7 +380,7 @@ Immediately after replacement, the modified model is expected to experience sign
 
 
 
-To bridge this gap, run the training pipeline with Quantization-Aware Fine-Tuning (QAFT). We pass an open-source instructional dataset through the model for 3–5 epochs, keeping the attention weights strictly locked. The fine-tuning stage adapts the ternary FFN parameters while keeping the attention weights frozen.
+To bridge this gap, run the training pipeline with Quantization-Aware Fine-Tuning (QAFT). Author pass an open-source instructional dataset through the model for 3–5 epochs, keeping the attention weights strictly locked. The fine-tuning stage adapts the ternary FFN parameters while keeping the attention weights frozen.
 
 
 ```
