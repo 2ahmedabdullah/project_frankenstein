@@ -258,17 +258,17 @@ $$D_i = \begin{cases}
 
 Standard Weight Distribution Curve
              
-                                                    ▲
-                                                   ╱█╲
-                                                  ╱███╲  ◄── High density of weights near 0
-                                                 ╱█████╲
-                                               _╱███████╲_
-                            -1 Zone           ╱███████████╲           +1 Zone
-                        ◄────────────│███████│      0      │███████├─────────────►
-                                     │  -Δ   │The Dead Zone│  +Δ   │ 
-                        (Strong Neg) │       │◄───────────►│       │ (Strong Pos)
-                                     ▼       ▼             ▼       ▼
-                                             (Squeezed to 0)        
+                                                        ▲
+                                                       ╱█╲
+                                                      ╱███╲  ◄── High density of weights near 0
+                                                     ╱█████╲
+                                                   _╱███████╲_
+                                -1 Zone           ╱███████████╲           +1 Zone
+                            ◄────────────│███████│      0      │███████├─────────────►
+                                         │  -Δ   │The Dead Zone│  +Δ   │ 
+                            (Strong Neg) │       │◄───────────►│       │ (Strong Pos)
+                                         ▼       ▼             ▼       ▼
+                                                 (Squeezed to 0)        
 
 This function handles the raw math. The quantization routine converts floating-point weight tensors into ternary representations while retaining a scaling factor for reconstruction. ($-1$, $0$, or $+1$).
 
