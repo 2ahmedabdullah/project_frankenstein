@@ -227,10 +227,7 @@ This script loads a pre-trained model, preserves the attention layers, and repla
         
 
 
-### The "Ternary Quantization Pipeline"
-
-
-1. The Mathematical Transformation (Value Level)
+### The "Ternary Quantization Pipeline": The Mathematical Transformation
 
 We are deliberately leaving the Attention Layers completely untouched because they handle the contextual relationships between tokens. Instead, we are surgically targeting the Feed-Forward Network (FFN) layers. In a standard Llama-style block, the FFN operation is typically defined using SwiGLU activation:
 
