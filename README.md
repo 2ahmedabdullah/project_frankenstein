@@ -21,6 +21,7 @@ OS           = "Windows 11"
 
 ## Physical Layout Comparison
 
+```text
 
         [ Original Track: Pure FP16 ]
         Shape: 32 elements  |  Size: 32 × 2 bytes = 64 bytes total
@@ -42,7 +43,7 @@ OS           = "Windows 11"
         │ Scale (FP16)  │ Packed Base-3 Radix Byte Array Payload   │
         │    2 Bytes    │                 7 Bytes                  │
         └───────────────┴──────────────────────────────────────────┘
-
+```
 
 ## 🏗️ Architecture Overview
 
