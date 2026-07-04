@@ -162,7 +162,7 @@ Once the attention block figures out how the words relate to each other, it pass
 4) ffnn_down.weight
 
 
-## 🗺️  DYNAMIC ARCHITECTURE MAP & TOPOLOGY GIST:
+### 🗺️  DYNAMIC FFN ARCHITECTURE MAP & TOPOLOGY GIST:
 
           [ INPUT HIGHWAY VECTOR ] (Size: 4,096)
                 │
