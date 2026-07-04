@@ -74,11 +74,11 @@ This project introduces **Vertical Precision Splitting**, dividing the workload 
          └───────────────────────────────────────────────────────────────┘
                                     │     
                                     ▼
-                          [ Frankenstein GGUF ] (Mutant GGUF file)
+                                [ Mutant ] (Mutant GGUF file)
                                     │
                                     ▼
                         ┌───────────────────────┐
-                        │   Post Healing Step   │
+                        │   Post Healing Step   │ (Frankenstein GGUF file)
                         └───────────┬───────────┘
                                     ▼
                             ┌───────────────┐
