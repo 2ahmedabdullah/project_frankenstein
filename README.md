@@ -77,6 +77,10 @@ This project introduces **Vertical Precision Splitting**, dividing the workload 
                           [ Frankenstein GGUF ] (Mutant GGUF file)
                                     │
                                     ▼
+                        ┌───────────────────────┐
+                        │   Post Healing Step   │
+                        └───────────┬───────────┘
+                                    ▼
                             ┌───────────────┐
                             │ C++ Execution │  ◄── Routes Attn -> GPU VRAM
                             │    Engine     │  ◄── Routes FFN  -> System RAM (CPU)
@@ -98,7 +102,7 @@ This project introduces **Vertical Precision Splitting**, dividing the workload 
                    └────────────────┬─────────────────┘
                                     │
                                     ▼
-                    [ Active Inference Token Loop ]
+                     [ Active Inference Token Loop ]
         
 
 
