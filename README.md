@@ -1,4 +1,4 @@
-# 🧬 Project Frankenstein: Hybrid-Precision Model Surgery - Why extreme post-hoc ternary quantization fails in decoder-only Transformers ?
+# 🧬Project Frankenstein: Hybrid-Precision Model Surgery - Why extreme post-hoc quantization fails in decoder-only Transformers ?
 
 This repository contains the tooling and research code required to perform architectural "surgery" on standard Transformer models (e.g., Llama, Qwen). Instead of training an LLM from scratch, this project surgically splits a pre-trained model down the center of its transformer blocks. The approach retains high-precision attention layers while replacing feed-forward layers with ternary representations inspired by BitNet. 
 
