@@ -227,7 +227,7 @@ Conclusion                   | 🚨 FP16 (16 bits/w)        | ℹ️  Custom (4.
 ```
 
 ===============================================================================================================================================================================================
-ORIGINAL BLOCK (BF16 View)                     | MUTANT BLOCK (De-quantized Bits)               | HEADERPATCHED BLOCK (De-quantized Bits)       | SIMULATED BLOCK           
+ORIGINAL BLOCK (BF16 View)                     | MUTANT BLOCK (De-quantized Bits)               | HEADERPATCHED BLOCK (De-quantized Bits)        | SIMULATED BLOCK           
 ===============================================================================================================================================================================================
 Unique values (31 found):                      | Unique values (4 found):                       | Unique values (4 found):                       | Unique values (3 found):                      
 ----------------------------------------       | ----------------------------------------       | ----------------------------------------       | ----------------------------------------      
