@@ -4,8 +4,8 @@ import numpy as np
 from gguf import GGUFReader
 
 ORIGINAL_PATH = "./models/Llama-3.2-3B-Instruct-BF16.gguf"
-# MUTANT_PATH = "./models/Llama-3.2-3B-Instruct-Mutant.gguf"
-MUTANT_PATH = "./models/Llama-3.2-3B-Instruct-HeaderPatched.gguf"
+MUTANT_PATH = "./models/Llama-3.2-3B-Instruct-Mutant.gguf"
+# MUTANT_PATH = "./models/Llama-3.2-3B-Instruct-HeaderPatched.gguf"
 SIMULATED_PATH = "./models/Llama-3.2-3B-Instruct-Simulated.gguf"
 
 # 🎛️ TOGGLE THIS TO SWITCH EVALUATION TARGETS
