@@ -110,91 +110,6 @@ The **Meta-Llama-3-8B-Instruct** GGUF model layout.
 The model blueprint is composed of two primary sections: **Global Setup Layers** and a deep stack of identical, repeating **Decoder Layer Blocks**. 
 
 
-
-### 💡 Part 1: The Global Parts (3 Tensors)
-
-Before the model even starts processing language layer-by-layer, it needs a few global components:
-
-1) token_embd.weight: The "translator" that turns the text words into math numbers.
-
-2) output_norm.weight: A tool that cleans up and stabilizes the math at the very end.
-
-3) output.weight: The final translator that turns the math numbers back into readable text words.
-
-
-### 💡 Part 2: The Attention Block (5 Tensors)
-
-The attention block computes contextual relationships between tokens by generating query, key, and value projections. To do this mathematically, it needs 5 distinct tensors:
-
-1) attn_norm.weight: An RMS (Root Mean Square) Normalization tensor. It cleans up, scales, and stabilizes the data entering the layer so the math doesn't spiral out of control.
-
-2) attn_q.weight (Query): Represents what the current word is "searching" for.
-
-3) attn_k.weight (Key): Represents what characteristics this word offers to other words.
-
-4) attn_v.weight (Value): Holds the actual semantic meaning of the word.
-
-5) attn_output.weight: After Q, K, and V interact, this tensor projects the combined result back into the model's main data highway.
-
-Advanced Note: In standard Transformers, Q, K, and V usually have the exact same size. However, Llama 3 uses Grouped-Query Attention (GQA). It uses 32 heads for Queries but scales down to just 8 heads for Keys and Values. Even though the sizes are smaller to save memory, they still require their own individual tensors!
-
-
-### 💡 Part 3: The Feed-Forward Neural Network / FFNN (4 Tensors)
-
-Once the attention block figures out how the words relate to each other, it passes the data to the FFN. The feed-forward network (FFN) performs a nonlinear transformation on each token representation independently and contains the majority of the model parameters. It uses 4 tensors:
-
-1) ffnn_norm.weight: Another normalization tensor that stabilizes the data right before it hits the heavy fact-checking math.
-
-2) ffnn_gate.weight
-
-3) ffnn_up.weight
-
-4) ffnn_down.weight
-
-
-### 🗺️  DYNAMIC FFN ARCHITECTURE MAP & TOPOLOGY GIST:
-
-          [ INPUT HIGHWAY VECTOR ] (Size: 4,096)
-                │
-                ▼
-    ┌──────────────────────────────────────────────────────┐
-    │  STAGE 1: ATTENTION BLOCK (Routed to GPU VRAM)       │
-    ├──────────────────────────────────────────────────────┤
-    │  • Input Norm   -> attn_norm.weight                  │
-    │  • Projections  -> Context Weights Matrix (Q, K, V)  │
-    │  • Output Mix   -> attn_output.weight                │
-    └──────────────────────────────────────────────────────┘
-                │
-                ▼
-         [ UPDATED DATA ] (Size: 4,096)
-                │
-                ├───────────────────────────┐
-                ▼                           ▼
-      ┌──────────────────────┐    ┌──────────────────────┐
-      │ STAGE 2A: ffn_up     │    │ STAGE 2B: ffn_gate   │
-      │ (Dense Fact Lookup)  │    │ (Routing Filter)     │
-      │ (Size: 14,336)       │    │ (Size: 14,336)       │
-      └──────────────────────┘    └──────────────────────┘
-                │                           │
-                │                           ▼
-                │                   [ Swish Activation ]
-                │                           │
-                └───────────┬───────────────┘
-                            ▼
-                [ Element-wise Multi ] (The Gate Filter)
-                            │
-                            ▼
-                ┌──────────────────────────┐
-                │ STAGE 2C: ffn_down       │
-                │ (Highway Compressor)     │
-                │ (Size: 4,096)            │
-                └──────────────────────────┘
-                            │
-                            ▼
-                  [ TO NEXT LAYER / BLOCK ]
-
-
-
 $$\text{Layer} = \text{Attention Block} + \text{FFNN Block}$$
 
 $$\text{5 Attention Tensors} + \text{4 FFNN Tensors} = \mathbf{9\text{ Tensors per Layer}}$$
@@ -311,9 +226,9 @@ Conclusion                   | 🚨 FP16 (16 bits/w)        | ℹ️  Custom (4.
 
 ```
 
-==================================================================================================================================================
+===============================================================================================================================================================================================
 ORIGINAL BLOCK (BF16 View)                     | MUTANT BLOCK (De-quantized Bits)               | HEADERPATCHED BLOCK (De-quantized Bits)       
-==================================================================================================================================================
+===============================================================================================================================================================================================
 Unique values (31 found):                      | Unique values (4 found):                       | Unique values (4 found):                       | Unique values (3 found):                      
 ----------------------------------------       | ----------------------------------------       | ----------------------------------------       | ----------------------------------------      
   -0.030762 ->  1 weights                      |   -0.004395 -> 11 weights ████████             |   -0.004673 ->  1 weights                      |   -0.009460 -> 11 weights ████████            
@@ -322,7 +237,7 @@ Unique values (31 found):                      | Unique values (4 found):       
   -0.018799 ->  1 weights                      |    0.193359 ->  1 weights                      |    0.000114 -> 11 weights ████████             |                                               
   -0.014954 ->  1 weights                      |                                                |                                                |                                               
   ... and 26 more unique values                |                                                |                                                |                                               
-==================================================================================================================================================
+===============================================================================================================================================================================================
 
 ```
 
