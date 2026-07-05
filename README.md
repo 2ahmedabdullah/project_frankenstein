@@ -204,6 +204,26 @@ If the number was too high (e.g., 1.5): The threshold would be too wide. The scr
 By using 0.7, it aims to preserve that the structural variance of the newly squeezed 1.58-bit ternary matrix matches the variance of the original high-precision matrix as closely as possible, allowing the laptop CPU to process a compact ternary representation.
             
 
+### 🛠️ The HeaderPatch Hack: Why and What
+
+The Problem (Why it was necessary)
+During an upstream processing or quantization phase, the model's architecture suffered a critical metadata mutation. Specifically, the multi-dimensional Feed-Forward Network (FFN) layers (such as blk.n.ffn_down.weight) had their 2D shape dimensions (e.g., [8192, 3072]) completely flattened into an identical 1D array ([25165824]).
+
+While the underlying binary weight data and file sizes remained intact, this structural corruption made the file illegal to GGUF parsers. Attempting to run the raw Mutant file caused execution engines (llama.cpp, Ollama) to immediately reject the tensor layout and crash on load.
+
+The Intervention (What the Author did)
+To bypass the hard crash and make the model execution-ready, the author performed low-level surgery directly on the GGUF metadata header:
+
+Dimension Restoration: Forced the flattened 1D tensor shape attributes back into their native 2D shapes ([8192, 3072]), restoring architectural compatibility.
+
+Byte-Offset Realignment: Recalculated the GGUF dictionary string lengths and shifted the internal tensor data padding down the binary stream (resulting in a precise +512 byte alignment shift from the original mutant offsets).
+
+Current Status & Next Steps
+Thanks to the HeaderPatched hack, the model now successfully passes structural validation, allocates memory correctly, and loads without crashing.
+
+⚠️ Note on Output: While structurally sound, the internal weights are currently experiencing layout disorientation (Row-Major vs. Column-Major mismatch from the original flattening process), resulting in incoherent/gibberish textual responses. Do not attempt to finetune or QAFT this build yet. The next phase of development requires a python-level matrix reshape/stride correction to realign the underlying binary data to match the newly patched header maps.
+
+
 ### Results and Analysis
 
 #### 📊 SIDE-BY-SIDE REPORT FOR TENSOR Check: blk.0.ffn_gate.weight
