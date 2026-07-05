@@ -18,6 +18,20 @@ OS           = "Windows 11"
 2024 Lenovo LOQ 15IRX9 (Type 83DV) gaming laptop
 
 ```
+## Models
+
+```text
+
+[1. Baseline FP16]  ──► Smooth, continuous decimal numbers (e.g., -0.0029, 0.0198)
+       │
+       ├─► [2. Simulated FP16] ──► Clean ternary steps (e.g., -0.0094, 0, +0.0094)
+       │
+       └─► [3. Mutant 1.58-bit] ──► Packed raw binary bits (1D array, broken layout)
+                 │
+                 └─►   [4. HeaderPatched] ──► Packed raw binary bits (2D matrix layout compatible with Llama cpp)
+                       
+
+```
 
 ## Physical Layout Comparison
 
@@ -44,6 +58,7 @@ OS           = "Windows 11"
         │    2 Bytes    │                 7 Bytes                  │
         └───────────────┴──────────────────────────────────────────┘
 ```
+
 
 ## 🏗️ Architecture Overview
 
@@ -78,43 +93,13 @@ This project introduces **Vertical Precision Splitting**, dividing the workload 
                                     │
                                     ▼
                         ┌───────────────────────┐
-                        │     Post Healing      │ (Fine-tuning step: Frankenstein GGUF file saved)
-                        │    Fine-Tuning Step   │ 
+                        │    Fixing the GGUF    │ (HeaderPatched GGUF file saved)
+                        │     Compatibility     │ 
                         └───────────┬───────────┘
-                                    ▼
-                            ┌───────────────┐
-                            │ C++ Execution │  ◄── Routes Attn -> GPU VRAM
-                            │    Engine     │  ◄── Routes FFN  -> System RAM (CPU)
-                            └───────┬───────┘
-                                    │
-                  ┌─────────────────┴─────────────────┐
-                  ▼ (If name contains "attn")         ▼ (If name contains "mlp"/"ffn")
-        ┌──────────────────────┐         ┌───────────────────────────┐
-        │  GGML_BACKEND_GPU    │         │     GGML_BACKEND_CPU      │
-        ├──────────────────────┤         ├───────────────────────────┤
-        │ Routes to 6GB VRAM   │         │ Routes to 24GB System RAM │
-        │ Smooth FP16/Q4 Math  │         │ Pure Addition/Subtraction │
-        └──────────┬───────────┘         └─────────────┬─────────────┘
-                   │                                   │
-                   └────────────────┬──────────────────┘
-                                    ▼
-                   ┌──────────────────────────────────┐
-                   │    LM Head Output (FP16) - VRAM  │
-                   └────────────────┬─────────────────┘
                                     │
                                     ▼
                      [ Active Inference Token Loop ]
         
-
-
-### Target Hardware Allocation
-
-| Component Layer | Parameter Weight | Targeted Precision | Target Hardware | Memory Footprint |
-| :--- | :--- | :--- | :--- | :--- |
-| **Embeddings & Head** | ~5% | FP16 / BF16 | GPU (VRAM) | ~0.5 GB |
-| **Self-Attention Blocks** | ~35% | FP16 or Q4_K | GPU (VRAM) | ~1.5 GB |
-| **Feed-Forward (FFNN)** | ~60% | 1.58-bit Ternary | CPU (System RAM) | ~2.5 GB |
-
 ---
 
 
@@ -232,8 +217,6 @@ pip install torch transformers accelerate datasets
 This script loads a pre-trained model, preserves the attention layers, and replaces selected FFNN matrices with custom BitLinear modules initialized using ternary weights (gate_proj, up_proj, down_proj).
 
 
-
-
 ### The "Ternary Quantization Pipeline": The Mathematical Transformation
 
 Deliberately leaving the Attention Layers completely untouched because they handle the contextual relationships between tokens. Instead, surgically targeting the Feed-Forward Network (FFN) layers. In a standard Llama-style block, the FFN operation is typically defined using SwiGLU activation:
@@ -306,110 +289,176 @@ If the number was too high (e.g., 1.5): The threshold would be too wide. The scr
 By using 0.7, it aims to preserve that the structural variance of the newly squeezed 1.58-bit ternary matrix matches the variance of the original high-precision matrix as closely as possible, allowing the laptop CPU to process a compact ternary representation.
             
 
-### Mutation Results and Analysis
+### Results and Analysis
+
+#### 📊 SIDE-BY-SIDE REPORT FOR TENSOR Check: blk.0.ffn_gate.weight
 
 ```
-🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_down.weight (System RAM)
-🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_gate.weight (System RAM)
-🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_up.weight (System RAM)
-🪓 [GRAFTING TERNARY 1.58-BIT]  -> blk.27.ffn_norm.weight (System RAM)
-💎 [PRESERVING TRACK]           -> blk.27.attn_k.weight
-💎 [PRESERVING TRACK]           -> blk.27.attn_output.weight
-💎 [PRESERVING TRACK]           -> blk.27.attn_q.weight
-💎 [PRESERVING TRACK]           -> blk.27.attn_v.weight
-💎 [PRESERVING TRACK]           -> output_norm.weight
-----------------------------------------------------------------------
-💾 Committing surgical changes to final file payload...
-
-🎉 Surgery Complete! Mutant Architecture Saved at: ./models/Llama-3.2-3B-Instruct-Mutant.gguf
+===============================================================================================================================================
+Metric / Property            | Original Model            | Mutant Model              | HeaderPatched Model       | Simulated Model          
+-----------------------------------------------------------------------------------------------------------------------------------------------
+GGUF Type ID                 | 30                        | 2                         | 2                         | 30                       
+Tensor Elements (Shape)      | 25,165,824                | 25,165,824                | 25,165,824                | 25,165,824               
+Physical Size on Disk        | 50,331,648 bytes          | 14,155,776 bytes          | 14,155,776 bytes          | 50,331,648 bytes         
+Physical Size (MB)           | 48.00 MB                  | 13.50 MB                  | 13.50 MB                  | 48.00 MB                 
+Bits Per Weight (bpw)        | 16.00 bits                | 4.50 bits                 | 4.50 bits                 | 16.00 bits               
+-----------------------------------------------------------------------------------------------------------------------------------------------
+Conclusion                   | 🚨 FP16 (16 bits/w)        | ℹ️  Custom (4.5 bits/w)   | ℹ️  Custom (4.5 bits/w)   | 🚨 FP16 (16 bits/w)       
+===============================================================================================================================================
 ```
 
-
-📊 Summary ComparisonPropertyMutant ModelHeaderPatched ModelTensor Data PayloadQuantized 1.58-bit RadixQuantized 1.58-bit Radix (Identical)Internal Tensor ShapesRaw custom dimensionsInverted column-major dimensionsGlobal GGUF HeaderOutdated (Claims FFN is 8192)Corrected (Claims FFN is 2304)llama.cpp Compatibility❌ Fails dimension checks✅ Passes and initializes
-
-
-
-### 📊 SIDE-BY-SIDE DISTRIBUTION PROFILE FOR: blk.0.ffn_gate.weight
+#### 📊 SIDE-BY-SIDE DISTRIBUTION PROFILE FOR: blk.0.ffn_gate.weight
 
 ```
 
-(hybrid_env) PS C:\Users\AbdulAhmed\Downloads\Hybrid Model> (Get-Item "./models/Llama-3.2-3B-Instruct-Mutant.gguf").Length / 1GB
-6.18501779437065
-(hybrid_env) PS C:\Users\AbdulAhmed\Downloads\Hybrid Model> (Get-Item "./models/Llama-3.2-3B-Instruct-BF16.gguf").Length / 1GB  
-5.99183863401413
-(hybrid_env) PS C:\Users\AbdulAhmed\Downloads\Hybrid Model> 
+==================================================================================================================================================
+ORIGINAL BLOCK (BF16 View)                     | MUTANT BLOCK (De-quantized Bits)               | HEADERPATCHED BLOCK (De-quantized Bits)       
+==================================================================================================================================================
+Unique values (31 found):                      | Unique values (4 found):                       | Unique values (4 found):                       | Unique values (3 found):                      
+----------------------------------------       | ----------------------------------------       | ----------------------------------------       | ----------------------------------------      
+  -0.030762 ->  1 weights                      |   -0.004395 -> 11 weights ████████             |   -0.004673 ->  1 weights                      |   -0.009460 -> 11 weights ████████            
+  -0.029297 ->  1 weights                      |    0.000000 -> 15 weights ███████████          |   -0.000114 ->  4 weights ███                  |    0.000000 ->  9 weights ███████             
+  -0.020020 ->  1 weights                      |    0.004395 ->  5 weights ███                  |   -0.000000 -> 16 weights ████████████         |    0.009460 -> 12 weights █████████           
+  -0.018799 ->  1 weights                      |    0.193359 ->  1 weights                      |    0.000114 -> 11 weights ████████             |                                               
+  -0.014954 ->  1 weights                      |                                                |                                                |                                               
+  ... and 26 more unique values                |                                                |                                                |                                               
+==================================================================================================================================================
+
+```
 
 
-📊 SIDE-BY-SIDE DISTRIBUTION PROFILE FOR: blk.0.ffn_gate.weight
-===================================================================================================================
-ORIGINAL MODEL (Continuous Byte View)                   | MUTANT MODEL (True Ternary States)                     
-===================================================================================================================
-[0.00 to 51.00]     11.79% █████                        | Value:  -1.0        48.96% ████████████████████████    
-[51.00 to 102.00]   33.41% ████████████████             | Value:   0.0         1.97%                             
-[102.00 to 153.00]  10.13% █████                        | Value:   1.0        49.07% ████████████████████████    
-[153.00 to 204.00]  35.98% █████████████████            |                                                        
-[204.00 to 255.00]   8.69% ████                         |                                                        
-===================================================================================================================
+### 📊 MUTATION REPORT
 
-FULL ARCHITECTURE MUTATION REPORT
-=========================================================================================================
+```
+
+🔍 DEBUG SNAPSHOT FOR blk.0.ffn_gate.weight:
+  -> Original: Type=<class 'numpy.ndarray'>, Dtype=float32, Shape=(25165824,)
+  -> Original sample values: [-0.00296021 -0.00479126  0.01989746 -0.01086426  0.02075195]
+  -> Eval Array: Type=<class 'numpy.ndarray'>, Dtype=float32, Shape=(25165824,)
+  -> Eval sample values: [ 0.          0.          0.00946045 -0.00946045  0.00946045]
+  -> GGUF Tensor Types: Original Type ID=N/A, Eval Type ID=N/A
+
+
+FULL ARCHITECTURE MUTATION REPORT [SIMULATED MODEL]
+===================================================================================================================
 GROUP / TENSOR COMPONENT                      | RECON. MSE      | COSINE SIMILARITY  | STATUS         
-=========================================================================================================
+===================================================================================================================
 👉 blk.0.attn_norm.weight                     | 0.000000        | 1.000000           | PRESERVED      
-👉 blk.0.ffn_norm.weight                      | 0.735776        | 0.994690           | PRESERVED      
+👉 blk.0.ffn_down.weight                      | 0.000129        | 0.896367           | MUTATED        
+👉 blk.0.ffn_gate.weight                      | 0.000145        | 0.898919           | MUTATED        
+👉 blk.0.ffn_up.weight                        | 0.000130        | 0.899407           | MUTATED        
+👉 blk.0.ffn_norm.weight                      | 0.000000        | 1.000000           | PRESERVED      
+👉 blk.0.attn_k.weight                        | 0.000000        | 1.000000           | PRESERVED      
+👉 blk.0.attn_output.weight                   | 0.000000        | 1.000000           | PRESERVED      
+👉 blk.0.attn_q.weight                        | 0.000000        | 1.000000           | PRESERVED      
+👉 blk.0.attn_v.weight                        | 0.000000        | 1.000000           | PRESERVED      
 👉 blk.14.attn_norm.weight                    | 0.000000        | 1.000000           | PRESERVED      
-👉 blk.14.ffn_norm.weight                     | 0.467312        | 0.996588           | PRESERVED      
+👉 blk.14.ffn_down.weight                     | 0.000131        | 0.896715           | MUTATED        
+👉 blk.14.ffn_gate.weight                     | 0.000154        | 0.896514           | MUTATED        
+👉 blk.14.ffn_up.weight                       | 0.000137        | 0.897944           | MUTATED        
+👉 blk.14.ffn_norm.weight                     | 0.000000        | 1.000000           | PRESERVED      
+👉 blk.14.attn_k.weight                       | 0.000000        | 1.000000           | PRESERVED      
+👉 blk.14.attn_output.weight                  | 0.000000        | 1.000000           | PRESERVED      
+👉 blk.14.attn_q.weight                       | 0.000000        | 1.000000           | PRESERVED      
+👉 blk.14.attn_v.weight                       | 0.000000        | 1.000000           | PRESERVED      
 👉 output_norm.weight                         | 0.000000        | 1.000000           | PRESERVED      
-=========================================================================================================
+===================================================================================================================
 📊 COMPREHENSIVE ARCHITECTURE MUTATION SUMMARY
-=========================================================================================================
-🔹 Layer Norms & Embeddings                   | Avg MSE: 0.220614 | Avg Cos Sim: 0.996171 | Items: 58
-=========================================================================================================
+===================================================================================================================
+🔹 FFN Core (Grafted Ternary)                 | Avg MSE: 0.000143 | Avg Cos Sim: 0.898547 | Items: 84
+🔹 Attention Projections (Preserved)          | Avg MSE: 0.000000 | Avg Cos Sim: 1.000000 | Items: 112
+🔹 Layer Norms & Embeddings                   | Avg MSE: 0.000000 | Avg Cos Sim: 1.000000 | Items: 59
+===================================================================================================================
 
 ```
 
+### Result Analysis
 
-```
-// modify the graph builder
-for (auto & tensor : model.tensors) {
-    if (tensor.name.contains("self_attn")) {
-        // Force attention mechanisms onto the 6GB RTX GPU
-        tensor.backend = GGML_BACKEND_GPU; 
-    } 
-    else if (tensor.name.contains("mlp") || tensor.name.contains("ffn")) {
-        // Force the massive feed-forward layers onto the 24GB System RAM
-        tensor.backend = GGML_BACKEND_CPU; 
-    }
-}
+#### 📌 Test Case Axis: GSM8K_Math
+**Prompt:** *"Solve for x: 3x + 7 = 22. Show the  work step-by-step."*
 
-```
+#### 🍏 Baseline Expected Output:
+> Here's the step-by-step solution to solve for x:
 
-### 🏥 Step 3: Post-Op Healing (Distillation / Fine-Tuning)
-Immediately after replacement, the modified model is expected to experience significant quality degradation due to the change in numerical representation. The model will output gibberish due to a language mismatch between the smooth floating-point attention layers and the blocky ternary FFN layers.
+**Equation:** 3x + 7 = 22
+
+**Step 1: Subtract 7 from both sides**
+
+Our goal is to isolate the term with x. To do this, we'll subtract 7 from both sides of the equation:
+
+#### 🟡 Simulated Realized Output:
+> gemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgemgem
+
+#### 🧪 Packed Mutant Realized Output:
+> ????????????????????????????????????????????????????????????????
+
+<br>
+
+#### 📌 Test Case Axis: Logic_Riddle
+**Prompt:** *"A man has 4 sons. Each son has one sister. How many children does the man have?"*
+
+#### 🍏 Baseline Expected Output:
+> The answer is... 5!
+
+The man has 4 sons, and each son has one sister, which means the man also has one daughter. So, in total, the man has 4 sons and 1 daughter, making a total of 5 children.
+
+#### 🟡 Simulated Realized Output:
+> cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols cols
+
+#### 🧪 Packed Mutant Realized Output:
+> ????????????????????????????????????????????????????????????????
+
+<br>
+
+#### 📌 Test Case Axis: MMLU_Concept
+**Prompt:** *"What are the primary structural differences between a standard Transformer LLM block and an isolated Feed-Forward Network (FFN) layer?"*
+
+#### 🍏 Baseline Expected Output:
+> Transformer Language Models (LLMs) and Feed-Forward Networks (FFNs) are two different architectures used in natural language processing (NLP) tasks. While both can be used for language modeling, they have distinct structural differences.
+
+**Standard Transformer LLM Block:**
+
+A standard Transformer LLM block consists of several layers
+
+#### 🟡 Simulated Realized Output:
+> innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc innoc
+
+#### 🧪 Packed Mutant Realized Output:
+> ????????????????????????????????????????????????????????????????
 
 
+### 🏥 Summary
 
-To bridge this gap, run the training pipeline with Quantization-Aware Fine-Tuning (QAFT). Author pass an open-source instructional dataset through the model for 3–5 epochs, keeping the attention weights strictly locked. The fine-tuning stage adapts the ternary FFN parameters while keeping the attention weights frozen.
+
+#### 🔍 Why the Simulated Model is Giving Bad Responses
+
+It was noticed that the Simulated Model has a much better MSE (0.000143) and Cosine Similarity (0.898) than the HeaderPatched model. Mathematically, it is much closer to the original Llama model.
+
+So why does it output repeating words like gemgemgem?
+
+Even though a cosine similarity of 0.89 looks decent on paper, it represents a massive structural shock to a living neural network.
+
+Llama’s attention layers are incredibly sensitive. They send precise fractional numbers into the FFN layers. The original FFN layers had a smooth, continuous bell curve of millions of precise values to process them.
+
+In the Simulated model, the model was chopped that smooth curve into just 3 rigid flat steps (+delta, 0, -delta).
+
+Because the model was never trained to handle this, the math inside the hidden states gets slightly corrupted at Layer 0. That corruption multiplies at Layer 1, compounds at Layer 2, and by Layer 32, the model's brain is totally scrambled. It completely loses its ability to form sentences, causing it to get stuck in a loop printing the exact same word over and over.
 
 
-```
-python train_healing.py --dataset "Open-Orca/OpenOrca" --epochs 3 --lr 2e-4
-```
+#### 🔍 Why the HeaderPatched Model is Giving Even Worse Responses (????)
 
-### 🚀 Step 4: Split-Hardware Inference Pipeline
-To run the finalized model on consumer hardware (like a laptop with 6GB VRAM and 24GB System RAM), navigate to the /inference subdirectory to build our custom execution loop compiler:
+If the Simulated model is experiencing a math shock, the HeaderPatched model is experiencing total sensory deprivation. It is outputting ??????? because llama.cpp is misinterpreting the binary data.
 
-```
-cd inference && make hybrid_runner
-```
+The author lied to llama.cpp. the author took the  custom 1.58-bit radix-packed bytes and told llama.cpp, "Hey, this is a standard Q4_0 4-bit tensor!"
 
-The runtime executable uses the following memory strategy:
+llama.cpp accepted the file without crashing, but when it runs the model, it uses its built-in Q4_0 calculation formula to read the  bytes.
 
-Device 0 (CUDA): Allocates the static KV Cache arrays, input context embedding tables, and all standard floating-point Attention matrices directly to GPU VRAM blocks.
+A standard Q4_0 block expects a 16-bit scale factor followed by 4-bit signed integers ranging from -8 to +7.
 
-Device 1 (CPU): Maps the large ternary FFN weights as unmultiplied tensor arrays within system memory.
+the  packing code grouped numbers completely differently based on the  custom ternary radix math.
 
-The Loop: During generation execution steps, layers process attention workflows via CUDA, transfer intermediate activations across PCIe to system RAM for integer addition processing inside the ternary FFN layers, and pull the activation tensor blocks back to the GPU to complete the loop cycle.
+Because llama.cpp is using a standard Q4_0 formula to read a custom 1.58-bit binary layout, it decodes the weights into wildly incorrect, astronomical numbers. The activations explode instantly to infinity, causing the engine to give up and print ? characters.
+
 
 ## Repo Structure
 
@@ -417,23 +466,24 @@ The Loop: During generation execution steps, layers process attention workflows 
 project-frankenstein/
 │
 ├── models/
-│   └── Meta-Llama-3-8B-Instruct-Q4_K_M.gguf         <--      [Raw model]
-│   └── Meta-Llama-3-8B-Surgically-Split-1.58b.gguf  <--  🧬  [THE MUTANT]
+│   └── Llama-3.2-3B-Instruct-BF16.gguf           <--       [Raw model]
+│   └── Llama-3.2-3B-Instruct-Simulated.gguf      <--  🧬  [SIMULATED]
+│   └── Llama-3.2-3B-Instruct-Mutant.gguf         <--  🧬  [THE MUTANT]
+│   └── Llama-3.2-3B-Instruct-HeaderPatched.gguf  <--  🧬  [THE HEADERPATCHED]
 │ 
 ├── diagnosis.py                                  
 ├── surgery.py                                     
-├── healing.py  
+├── patch_header.py  
 │
-└── inference/
-    ├── Makefile                                   
-    └── hybrid_runner.cpp                            <-- (C++ engine)
+└── evaluation/
+    ├── inspect.py                                   
+    ├── verify_mutant.py                                   
+    ├── benchmark_behavior.py  
+    ├── full_evaluation.py  
+    └── check_bytes.py           
+
  
  ```
-
-## ⚠️ Known Implementation Limits
-The PCIe Bottleneck: Due to structural constraints on standard consumer motherboards, routing step data back and forth between VRAM and system memory introduces data traffic stalls. Average generation ranges between 5 to 12 tokens per second over typical PCIe 4.0 slots.
-
-Quantization Noise: Smaller models (sub-3B parameters) exhibit higher vulnerability to logical degradation post-surgery. Targets sized at 7B parameters or higher demonstrate the most stable post-op recoveries.
 
 ## 📄 License & Attribution
 This architecture framework builds heavily upon concepts outlined in Microsoft Research's The Era of 1.58-bit Large Language Models (BitNet) and the open-source acceleration tooling inside llama.cpp. Licensed under the MIT Research License.
