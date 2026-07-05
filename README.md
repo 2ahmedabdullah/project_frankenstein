@@ -62,8 +62,6 @@ OS           = "Windows 11"
 
 ## 🏗️ Architecture Overview
 
-Standard local AI inference engines offload models *horizontally* (by entire layer blocks). 
-This project introduces **Vertical Precision Splitting**, dividing the workload based on hardware-specific computing strengths:
 
 
                            [ Original Model ]
@@ -361,6 +359,27 @@ A standard Transformer LLM block consists of several layers
 #### 🧪 Packed Mutant Realized Output:
 > ????????????????????????????????????????????????????????????????
 
+
+### 📊 Comprehensive Hybridization Architecture & Behavior Report
+
+#### 🧬 1. Tensor Reconstruction Matrix (Weight Distortions)
+
+```
+| LAYER COMPONENT | RECON. MSE ERROR | COSINE SIMILARITY | STATUS |
+| :--- | :--- | :--- | :--- |
+| **FFN Core (Grafted Ternary)** | 0.000143 | 0.898801 | `MUTATED (2.62 bpw)` |
+| **Attention Projections (Preserved)** | 0.000000 | 1.000000 | `PRESERVED` |
+| **Layer Norms & Embeddings** | 0.000000 | 1.000000 | `PRESERVED` |
+```
+
+#### 🎛️ 2. Macro Resource & Velocity Allocation
+
+```
+| Hardware Performance Attribute | Baseline BF16 | Simulated Hybrid | Packed Mutant (Radix) |
+| :--- | :--- | :--- | :--- |
+| **Model Graph VRAM Footprint** | 5.83 GB | 5.83 GB | 3.56 GB |
+| **Average Token Velocity**     | 10.94 t/s | 11.39 t/s | 40.51 t/s |
+```
 
 ### 🏥 Summary
 
